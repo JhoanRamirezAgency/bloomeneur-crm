@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import { syncFromSheets } from '../lib/sheets';
 import LeadProfile from '../components/LeadProfile';
+import ReportsPage from './ReportsPage';
 
 const STATUS_COLORS = {
   New:      { bg: '#E6F1FB', color: '#185FA5' },
@@ -21,6 +22,7 @@ export default function Dashboard() {
 
   const [leads, setLeads]           = useState([]);
   const [loading, setLoading]       = useState(true);
+  const [showReports, setShowReports] = useState(false);
   const [syncing, setSyncing]       = useState(false);
   const [syncMsg, setSyncMsg]       = useState('');
   const [selectedLead, setSelected] = useState(null);
@@ -99,6 +101,8 @@ export default function Dashboard() {
 
   return (
     <div style={S.wrap}>
+      {showReports && <ReportsPage onBack={() => setShowReports(false)} />}
+      {!showReports && <>
       {/* ── TOPBAR ── */}
       <div style={S.topbar}>
         <div style={S.topLeft}>
@@ -114,6 +118,11 @@ export default function Dashboard() {
           {isAdmin && (
             <button style={S.syncBtn} onClick={handleManualSync} disabled={syncing}>
               {syncing ? '⟳ Sincronizando...' : '⟳ Sync Google Sheets'}
+            </button>
+          )}
+          {isAdmin && (
+            <button style={{...S.syncBtn, background: '#EAF3DE', color: '#3B6D11', border: 'none'}} onClick={() => setShowReports(true)}>
+              📊 Reportes
             </button>
           )}
           {syncMsg && <span style={S.syncMsg}>{syncMsg}</span>}
@@ -231,6 +240,7 @@ export default function Dashboard() {
           }}
         />
       )}
+      </>}
     </div>
   );
 }
