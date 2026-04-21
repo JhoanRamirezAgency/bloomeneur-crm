@@ -24,7 +24,7 @@ function rowToLead(row) {
 
 // Obtiene todos los leads del Google Sheet
 async function fetchSheetLeads() {
-  const range = encodeURIComponent(`${SHEET_NAME}!A2:R1000`);
+  const range = encodeURIComponent(`${SHEET_NAME}!A2:R2000`);
   const url   = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${API_KEY}`;
   const res   = await fetch(url);
   if (!res.ok) throw new Error(`Google Sheets error: ${res.status}`);
