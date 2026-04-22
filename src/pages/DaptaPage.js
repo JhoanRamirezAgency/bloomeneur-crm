@@ -31,11 +31,23 @@ async function fetchSheet(sheetName) {
   const rows  = data.values || [];
   if (rows.length < 2) return [];
   const headers = rows[0];
-  return rows.slice(1).map(row => {
-    const obj = {};
-    headers.forEach((h, i) => { obj[h] = row[i] || ''; });
-    return obj;
-  });
+  return rows.slice(1)
+    .map(row => {
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = row[i] || ''; });
+      return obj;
+    })
+    .filter(row => {
+      // Filtrar filas vacías o de plantilla sin datos reales
+      const name  = String(row.contact_name || '').trim();
+      const phone = String(row.to_number || '').trim();
+      const id    = String(row.call_id || '').trim();
+      // Para contacts_results: requiere nombre y teléfono
+      if (name && phone && phone !== '0') return true;
+      // Para call_log: requiere call_id
+      if (id && id.startsWith('call_')) return true;
+      return false;
+    });
 }
 
 // ── Styles ─────────────────────────────────────────────────────────────────────
