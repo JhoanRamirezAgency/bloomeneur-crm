@@ -34,7 +34,8 @@ export default function Dashboard() {
   // ── Cargar leads ────────────────────────────────────────────────────────────
   const loadLeads = useCallback(async () => {
     setLoading(true);
-    let query = supabase.from('leads').select('*').order('created_at', { ascending: false });
+    // FIX: Supabase limita 100 por defecto — usar range para traer hasta 2000
+    let query = supabase.from('leads').select('*').order('created_at', { ascending: false }).range(0, 1999);
     // Si no es admin, solo sus leads (RLS lo hace automático, pero lo repetimos por claridad)
     if (!isAdmin) query = query.eq('assigned_to', user.email);
     const { data, error } = await query;
