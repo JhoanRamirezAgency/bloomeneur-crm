@@ -4,6 +4,7 @@ import { useAuth } from '../lib/AuthContext';
 import { syncFromSheets } from '../lib/sheets';
 import LeadProfile from '../components/LeadProfile';
 import ReportsPage from './ReportsPage';
+import DaptaPage from './DaptaPage';
 
 const STATUS_COLORS = {
   New:      { bg: '#E6F1FB', color: '#185FA5' },
@@ -23,6 +24,7 @@ export default function Dashboard() {
   const [leads, setLeads]           = useState([]);
   const [loading, setLoading]       = useState(true);
   const [showReports, setShowReports] = useState(false);
+  const [showDapta, setShowDapta]     = useState(false);
   const [syncing, setSyncing]       = useState(false);
   const [syncMsg, setSyncMsg]       = useState('');
   const [selectedLead, setSelected] = useState(null);
@@ -34,11 +36,20 @@ export default function Dashboard() {
   // ── Cargar leads ────────────────────────────────────────────────────────────
   const loadLeads = useCallback(async () => {
     setLoading(true);
-    let query = supabase.from('leads').select('*').order('created_at', { ascending: false });
-    // Si no es admin, solo sus leads (RLS lo hace automático, pero lo repetimos por claridad)
-    if (!isAdmin) query = query.eq('assigned_to', user.email);
-    const { data, error } = await query;
-    if (!error) setLeads(data || []);
+    // Paginación completa - trae TODOS los leads sin límite
+    let allLeads = [];
+    let page = 0;
+    const pageSize = 1000;
+    while (true) {
+      let query = supabase.from('leads').select('*').order('created_at', { ascending: false }).range(page * pageSize, (page + 1) * pageSize - 1);
+      if (!isAdmin) query = query.eq('assigned_to', user.email);
+      const { data, error } = await query;
+      if (error || !data || data.length === 0) break;
+      allLeads = allLeads.concat(data);
+      if (data.length < pageSize) break;
+      page++;
+    }
+    setLeads(allLeads);
     setLoading(false);
   }, [user, isAdmin]);
 
@@ -73,9 +84,8 @@ export default function Dashboard() {
     setSyncing(true); setSyncMsg('');
     const result = await syncFromSheets();
     setLastSync(new Date());
-    if (result.error)    setSyncMsg(`Error: ${result.error}`);
-    else if (result.inserted > 0) { setSyncMsg(`✓ ${result.inserted} leads nuevos importados`); loadLeads(); }
-    else                setSyncMsg('Sin leads nuevos');
+    if (result.error) setSyncMsg(`Error: ${result.error}`);
+    else { const parts = []; if (result.inserted > 0) parts.push(result.inserted + ' nuevos'); if (result.updated > 0) parts.push(result.updated + ' actualizados'); setSyncMsg(parts.length > 0 ? '✓ ' + parts.join(', ') : 'Sin cambios'); if (result.inserted > 0 || result.updated > 0) loadLeads(); }
     setSyncing(false);
     setTimeout(() => setSyncMsg(''), 4000);
   }
@@ -102,7 +112,8 @@ export default function Dashboard() {
   return (
     <div style={S.wrap}>
       {showReports && <ReportsPage onBack={() => setShowReports(false)} />}
-      {!showReports && <>
+      {showDapta && <DaptaPage onBack={() => setShowDapta(false)} />}
+      {!showReports && !showDapta && <>
       {/* ── TOPBAR ── */}
       <div style={S.topbar}>
         <div style={S.topLeft}>
@@ -123,6 +134,11 @@ export default function Dashboard() {
           {isAdmin && (
             <button style={{...S.syncBtn, background: '#EAF3DE', color: '#3B6D11', border: 'none'}} onClick={() => setShowReports(true)}>
               📊 Reportes
+            </button>
+          )}
+          {isAdmin && (
+            <button style={{...S.syncBtn, background: '#6C47FF', color: '#fff', border: 'none'}} onClick={() => setShowDapta(true)}>
+              🤖 Agente IA
             </button>
           )}
           {syncMsg && <span style={S.syncMsg}>{syncMsg}</span>}
