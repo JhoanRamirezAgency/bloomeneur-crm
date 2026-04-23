@@ -5,6 +5,7 @@ import { syncFromSheets } from '../lib/sheets';
 import LeadProfile from '../components/LeadProfile';
 import ReportsPage from './ReportsPage';
 import DaptaPage from './DaptaPage';
+import LogisticsPage from './LogisticsPage';
 
 const STATUS_COLORS = {
   New:      { bg: '#E6F1FB', color: '#185FA5' },
@@ -24,7 +25,8 @@ export default function Dashboard() {
   const [leads, setLeads]           = useState([]);
   const [loading, setLoading]       = useState(true);
   const [showReports, setShowReports] = useState(false);
-  const [showDapta, setShowDapta]     = useState(false);
+  const [showDapta, setShowDapta]         = useState(false);
+  const [showLogistics, setShowLogistics] = useState(false);
   const [syncing, setSyncing]       = useState(false);
   const [syncMsg, setSyncMsg]       = useState('');
   const [selectedLead, setSelected] = useState(null);
@@ -113,7 +115,8 @@ export default function Dashboard() {
     <div style={S.wrap}>
       {showReports && <ReportsPage onBack={() => setShowReports(false)} />}
       {showDapta && <DaptaPage onBack={() => setShowDapta(false)} />}
-      {!showReports && !showDapta && <>
+      {showLogistics && <LogisticsPage onBack={() => setShowLogistics(false)} />}
+      {!showReports && !showDapta && !showLogistics && <>
       {/* ── TOPBAR ── */}
       <div style={S.topbar}>
         <div style={S.topLeft}>
@@ -139,6 +142,11 @@ export default function Dashboard() {
           {isAdmin && (
             <button style={{...S.syncBtn, background: '#6C47FF', color: '#fff', border: 'none'}} onClick={() => setShowDapta(true)}>
               🤖 Agente IA
+            </button>
+          )}
+          {isAdmin && (
+            <button style={{...S.syncBtn, background: '#CC4400', color: '#fff', border: 'none'}} onClick={() => setShowLogistics(true)}>
+              📦 Logística
             </button>
           )}
           {syncMsg && <span style={S.syncMsg}>{syncMsg}</span>}
