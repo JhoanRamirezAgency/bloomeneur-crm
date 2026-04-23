@@ -23,7 +23,9 @@ async function fetchSheet(sheetName) {
 function parsePrice(val) {
   if (!val) return 0;
   if (typeof val === 'number') return val;
-  return parseFloat(String(val).replace(/[$,]/g, '').replace(',', '.').trim()) || 0;
+  // Quitar $, espacios, y manejar tanto punto como coma decimal
+  const clean = String(val).replace(/[$\s]/g, '').replace(/,(?=\d{2}$)/, '.');
+  return parseFloat(clean) || 0;
 }
 
 function groupByOrder(rows, priceCol, priceCol2) {
