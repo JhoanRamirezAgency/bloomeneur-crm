@@ -20,6 +20,12 @@ async function fetchSheet(sheetName) {
 }
 
 // Agrupa filas por orden (la primera fila con # tiene los datos del cliente)
+function parsePrice(val) {
+  if (!val) return 0;
+  if (typeof val === 'number') return val;
+  return parseFloat(String(val).replace(/[$,]/g, '').replace(',', '.').trim()) || 0;
+}
+
 function groupByOrder(rows, priceCol, priceCol2) {
   const orders = [];
   let current = null;
@@ -27,8 +33,13 @@ function groupByOrder(rows, priceCol, priceCol2) {
     const num = row['Número de orden'] || row['Número de orden '] || '';
     if (num && num.toString().startsWith('#')) {
       if (current) orders.push(current);
-      const precioWeb  = parseFloat(String(row[priceCol]  || '0').replace(',', '.')) || 0;
-      const precioPag  = parseFloat(String(row[priceCol2] || row[priceCol] || '0').replace(',', '.')) || 0;
+      // Buscar precio web y precio pagado con varios nombres posibles
+      const precioWeb = parsePrice(
+        row['precio web'] || row['PRECIO WEB'] || row[priceCol] || 0
+      );
+      const precioPag = parsePrice(
+        row['precio pagado'] || row['PRECIO REAL PAGADO'] || row[priceCol2] || row[priceCol] || 0
+      );
       current = {
         num:        num.toString(),
         fecha:      row['Fecha de orden'] || '',
