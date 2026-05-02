@@ -4,7 +4,8 @@ import { useAuth } from '../lib/AuthContext';
 import { syncFromSheets } from '../lib/sheets';
 import LeadProfile from '../components/LeadProfile';
 import ReportsPage from './ReportsPage';
-import AddLeadModal from '../components/AddLeadModal';
+import DaptaPage from './DaptaPage';
+import LogisticsPage from './LogisticsPage';
 
 const STATUS_COLORS = {
   New:      { bg: '#E6F1FB', color: '#185FA5' },
@@ -14,32 +15,210 @@ const STATUS_COLORS = {
   Lost:     { bg: '#F1EFE8', color: '#5F5E5A' },
 };
 
-const PLATFORM_LABEL = { fb: 'FB', ig: 'IG', sh: 'SH', manual: 'Manual' };
-const PLATFORM_COLOR = { fb: '#1877F2', ig: '#E1306C', sh: '#96BF48', manual: '#888780' };
+const PLATFORM_LABEL = { fb: 'FB', ig: 'IG', sh: 'SH' };
+const PLATFORM_COLOR = { fb: '#1877F2', ig: '#E1306C', sh: '#96BF48' };
+
+
+
+// ── Modal para crear un lead manualmente ────────────────────────────────────
+function NewLeadModal({ onClose, onSave, userEmail, isAdmin }) {
+  const [saving, setSaving] = useState(false);
+  const [error,  setError]  = useState('');
+  const [form, setForm] = useState({
+    full_name:   '',
+    phone:       '',
+    email:       '',
+    source:      'Directo',
+    platform:    'other',
+    intent:      '',
+    timeline:    '',
+    status:      'New',
+    assigned_to: userEmail,
+    notes:       '',
+  });
+
+  const CS_USERS = [
+    'jessica@bloomeneur.com',
+    'marcela@bloomeneur.com',
+    'sofia@bloomeneur.com',
+  ];
+
+  function set(k, v) { setForm(f => ({ ...f, [k]: v })); }
+
+  async function handleSave() {
+    if (!form.full_name.trim()) { setError('El nombre es obligatorio'); return; }
+    setSaving(true); setError('');
+    try {
+      const { data, error } = await supabase.from('leads').insert({
+        full_name:   form.full_name.trim(),
+        phone:       form.phone.trim(),
+        email:       form.email.trim(),
+        source:      form.source,
+        platform:    form.platform,
+        intent:      form.intent,
+        timeline:    form.timeline,
+        status:      form.status,
+        assigned_to: form.assigned_to,
+        touches:     form.notes ? [{ type: 'note', result: 'Note', note: form.notes, date: new Date().toISOString().slice(0,10), cs: userEmail }] : [],
+        sheet_id:    'manual_' + Date.now(),
+      }).select().single();
+      if (error) { setError(error.message); setSaving(false); return; }
+      onSave(data);
+    } catch(e) { setError(e.message); setSaving(false); }
+  }
+
+  const inp = {
+    width: '100%', border: '1px solid #E8E7E2', borderRadius: 7, padding: '8px 12px',
+    fontSize: 13, background: '#FAFAF8', color: '#1A1916', outline: 'none', boxSizing: 'border-box',
+  };
+  const lbl = { fontSize: 11, color: '#A8A79D', fontWeight: 500, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' };
+  const row = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 };
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position:'fixed', inset:0, background:'#0006', zIndex:998 }} />
+      <div style={{ position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', background:'#fff', borderRadius:12, padding:28, width:540, maxHeight:'90vh', overflowY:'auto', zIndex:999, boxShadow:'0 20px 60px #0003' }}>
+        {/* Header */}
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+          <div>
+            <div style={{ fontSize:16, fontWeight:700, color:'#1A1916' }}>+ Nuevo lead manual</div>
+            <div style={{ fontSize:12, color:'#A8A79D', marginTop:2 }}>Lead conseguido directamente</div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:'#A8A79D' }}>✕</button>
+        </div>
+
+        {/* Nombre y teléfono */}
+        <div style={row}>
+          <div>
+            <div style={lbl}>Nombre completo *</div>
+            <input style={inp} placeholder="Ej: María García" value={form.full_name} onChange={e => set('full_name', e.target.value)} />
+          </div>
+          <div>
+            <div style={lbl}>Teléfono</div>
+            <input style={inp} placeholder="+1 555 000 0000" value={form.phone} onChange={e => set('phone', e.target.value)} />
+          </div>
+        </div>
+
+        {/* Email y fuente */}
+        <div style={row}>
+          <div>
+            <div style={lbl}>Email</div>
+            <input style={inp} type="email" placeholder="correo@ejemplo.com" value={form.email} onChange={e => set('email', e.target.value)} />
+          </div>
+          <div>
+            <div style={lbl}>Fuente</div>
+            <select style={inp} value={form.source} onChange={e => set('source', e.target.value)}>
+              <option value="Directo">Directo</option>
+              <option value="Referido">Referido</option>
+              <option value="Evento">Evento</option>
+              <option value="META">META</option>
+              <option value="Otro">Otro</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Intención y timeline */}
+        <div style={row}>
+          <div>
+            <div style={lbl}>Nivel de interés</div>
+            <select style={inp} value={form.intent} onChange={e => set('intent', e.target.value)}>
+              <option value="">Sin especificar</option>
+              <option value="yes,_i_want_to_get_started">Quiere empezar ya</option>
+              <option value="yes,_but_i'd_like_more_information">Quiere más info</option>
+              <option value="i'm_just_exploring">Solo explorando</option>
+              <option value="later">Más adelante</option>
+            </select>
+          </div>
+          <div>
+            <div style={lbl}>¿Cuándo quiere empezar?</div>
+            <select style={inp} value={form.timeline} onChange={e => set('timeline', e.target.value)}>
+              <option value="">Sin especificar</option>
+              <option value="immediately">Inmediatamente</option>
+              <option value="within_the_next_month">Próximo mes</option>
+              <option value="later">Más adelante</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Estado y CS */}
+        <div style={row}>
+          <div>
+            <div style={lbl}>Estado inicial</div>
+            <select style={inp} value={form.status} onChange={e => set('status', e.target.value)}>
+              {['New','Hot','Maybe','Customer','Lost'].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          {isAdmin && (
+            <div>
+              <div style={lbl}>Asignar a CS</div>
+              <select style={inp} value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)}>
+                {CS_USERS.map(cs => <option key={cs} value={cs}>{cs.split('@')[0]}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* Nota inicial */}
+        <div style={{ marginBottom:18 }}>
+          <div style={lbl}>Nota inicial (opcional)</div>
+          <textarea
+            style={{ ...inp, height:70, resize:'vertical', fontFamily:'inherit' }}
+            placeholder="Cómo conseguiste este lead, contexto importante..."
+            value={form.notes}
+            onChange={e => set('notes', e.target.value)}
+          />
+        </div>
+
+        {error && <div style={{ color:'#993C1D', fontSize:12, marginBottom:12, background:'#FAECE7', padding:'8px 12px', borderRadius:6 }}>⚠️ {error}</div>}
+
+        <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+          <button onClick={onClose} style={{ border:'1px solid #E8E7E2', borderRadius:7, padding:'8px 18px', fontSize:13, background:'none', cursor:'pointer', color:'#5F5E5A' }}>
+            Cancelar
+          </button>
+          <button onClick={handleSave} disabled={saving} style={{ border:'none', borderRadius:7, padding:'8px 20px', fontSize:13, background: saving ? '#A8A79D' : '#1A1916', color:'#fff', cursor: saving ? 'default' : 'pointer', fontWeight:600 }}>
+            {saving ? 'Guardando...' : '✓ Crear lead'}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
 
 export default function Dashboard() {
   const { user, profile, signOut } = useAuth();
   const isAdmin = profile?.role === 'admin';
 
-  const [leads, setLeads]             = useState([]);
-  const [loading, setLoading]         = useState(true);
+  const [leads, setLeads]           = useState([]);
+  const [loading, setLoading]       = useState(true);
   const [showReports, setShowReports] = useState(false);
-  const [showAddLead, setShowAddLead] = useState(false);
-  const [syncing, setSyncing]         = useState(false);
-  const [syncMsg, setSyncMsg]         = useState('');
-  const [selectedLead, setSelected]   = useState(null);
-  const [search, setSearch]           = useState('');
-  const [statusFilter, setStatus]     = useState('');
-  const [csFilter, setCSFilter]       = useState('');
-  const [lastSync, setLastSync]       = useState(null);
+  const [showDapta, setShowDapta]         = useState(false);
+  const [showLogistics, setShowLogistics] = useState(false);
+  const [showNewLead, setShowNewLead]     = useState(false);
+  const [syncing, setSyncing]       = useState(false);
+  const [syncMsg, setSyncMsg]       = useState('');
+  const [selectedLead, setSelected] = useState(null);
+  const [search, setSearch]         = useState('');
+  const [statusFilter, setStatus]   = useState('');
+  const [csFilter, setCSFilter]     = useState('');
+  const [lastSync, setLastSync]     = useState(null);
 
   // ── Cargar leads ────────────────────────────────────────────────────────────
   const loadLeads = useCallback(async () => {
     setLoading(true);
-    let query = supabase.from('leads').select('*').order('created_at', { ascending: false });
-    if (!isAdmin) query = query.eq('assigned_to', user.email);
-    const { data, error } = await query;
-    if (!error) setLeads(data || []);
+    // Paginación completa - trae TODOS los leads sin límite
+    let allLeads = [];
+    let page = 0;
+    const pageSize = 1000;
+    while (true) {
+      let query = supabase.from('leads').select('*').order('created_at', { ascending: false }).range(page * pageSize, (page + 1) * pageSize - 1);
+      if (!isAdmin) query = query.eq('assigned_to', user.email);
+      const { data, error } = await query;
+      if (error || !data || data.length === 0) break;
+      allLeads = allLeads.concat(data);
+      if (data.length < pageSize) break;
+      page++;
+    }
+    setLeads(allLeads);
     setLoading(false);
   }, [user, isAdmin]);
 
@@ -49,12 +228,14 @@ export default function Dashboard() {
   useEffect(() => {
     const channel = supabase
       .channel('leads-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => loadLeads())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => {
+        loadLeads();
+      })
       .subscribe();
     return () => supabase.removeChannel(channel);
   }, [loadLeads]);
 
-  // ── Auto-sync cada 60 minutos (solo admin) ──────────────────────────────────
+  // ── Auto-sync cada 60 minutos ───────────────────────────────────────────────
   useEffect(() => {
     if (!isAdmin) return;
     const doSync = async () => {
@@ -72,9 +253,8 @@ export default function Dashboard() {
     setSyncing(true); setSyncMsg('');
     const result = await syncFromSheets();
     setLastSync(new Date());
-    if (result.error)         setSyncMsg(`Error: ${result.error}`);
-    else if (result.inserted > 0) { setSyncMsg(`✓ ${result.inserted} leads nuevos importados`); loadLeads(); }
-    else                     setSyncMsg('Sin leads nuevos');
+    if (result.error) setSyncMsg(`Error: ${result.error}`);
+    else { const parts = []; if (result.inserted > 0) parts.push(result.inserted + ' nuevos'); if (result.updated > 0) parts.push(result.updated + ' actualizados'); setSyncMsg(parts.length > 0 ? '✓ ' + parts.join(', ') : 'Sin cambios'); if (result.inserted > 0 || result.updated > 0) loadLeads(); }
     setSyncing(false);
     setTimeout(() => setSyncMsg(''), 4000);
   }
@@ -82,9 +262,9 @@ export default function Dashboard() {
   // ── Filtrado ─────────────────────────────────────────────────────────────────
   const filtered = leads.filter(l => {
     const q = search.toLowerCase();
-    const matchQ  = !q || l.full_name?.toLowerCase().includes(q) || l.email?.toLowerCase().includes(q) || l.phone?.includes(q);
-    const matchS  = !statusFilter || l.status === statusFilter;
-    const matchCS = !csFilter     || l.assigned_to === csFilter;
+    const matchQ   = !q || l.full_name?.toLowerCase().includes(q) || l.email?.toLowerCase().includes(q) || l.phone?.includes(q);
+    const matchS   = !statusFilter || l.status === statusFilter;
+    const matchCS  = !csFilter     || l.assigned_to === csFilter;
     return matchQ && matchS && matchCS;
   });
 
@@ -101,198 +281,200 @@ export default function Dashboard() {
   return (
     <div style={S.wrap}>
       {showReports && <ReportsPage onBack={() => setShowReports(false)} />}
-
-      {!showReports && <>
-        {/* ── TOPBAR ── */}
-        <div style={S.topbar}>
-          <div style={S.topLeft}>
-            <div style={S.logoIcon}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="white">
-                <path d="M8 2C5.8 2 4 3.8 4 6c0 1.5.8 2.8 2 3.5V11h4V9.5c1.2-.7 2-2 2-3.5 0-2.2-1.8-4-4-4zm0 6.5c-1.4 0-2.5-1.1-2.5-2.5S6.6 3.5 8 3.5 10.5 4.6 10.5 6 9.4 8.5 8 8.5zM6 12h4v1H6z"/>
-              </svg>
-            </div>
-            <span style={S.logoText}>Bloomeneur CRM</span>
-            <span style={S.userBadge}>{profile?.name || user.email}</span>
+      {showDapta && <DaptaPage onBack={() => setShowDapta(false)} />}
+      {showLogistics && <LogisticsPage onBack={() => setShowLogistics(false)} />}
+      {!showReports && !showDapta && !showLogistics && <>
+      {/* ── TOPBAR ── */}
+      <div style={S.topbar}>
+        <div style={S.topLeft}>
+          <div style={S.logoIcon}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="white">
+              <path d="M8 2C5.8 2 4 3.8 4 6c0 1.5.8 2.8 2 3.5V11h4V9.5c1.2-.7 2-2 2-3.5 0-2.2-1.8-4-4-4zm0 6.5c-1.4 0-2.5-1.1-2.5-2.5S6.6 3.5 8 3.5 10.5 4.6 10.5 6 9.4 8.5 8 8.5zM6 12h4v1H6z"/>
+            </svg>
           </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {/* ── BOTÓN AGREGAR LEAD — visible para todos ── */}
-            <button style={S.addBtn} onClick={() => setShowAddLead(true)}>
-              + Agregar lead
+          <span style={S.logoText}>Bloomeneur CRM</span>
+          <span style={S.userBadge}>{profile?.name || user.email}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {isAdmin && (
+            <button style={S.syncBtn} onClick={handleManualSync} disabled={syncing}>
+              {syncing ? '⟳ Sincronizando...' : '⟳ Sync Google Sheets'}
             </button>
-
-            {isAdmin && (
-              <button style={S.syncBtn} onClick={handleManualSync} disabled={syncing}>
-                {syncing ? '⟳ Sincronizando...' : '⟳ Sync Sheets'}
-              </button>
-            )}
-            {isAdmin && (
-              <button style={{ ...S.syncBtn, background: '#EAF3DE', color: '#3B6D11', border: 'none' }}
-                onClick={() => setShowReports(true)}>
-                📊 Reportes
-              </button>
-            )}
-            {syncMsg   && <span style={S.syncMsg}>{syncMsg}</span>}
-            {lastSync  && <span style={S.lastSync}>Última sync: {lastSync.toLocaleTimeString()}</span>}
-            <button style={S.outBtn} onClick={signOut}>Salir</button>
-          </div>
+          )}
+          {isAdmin && (
+            <button style={{...S.syncBtn, background: '#EAF3DE', color: '#3B6D11', border: 'none'}} onClick={() => setShowReports(true)}>
+              📊 Reportes
+            </button>
+          )}
+          {isAdmin && (
+            <button style={{...S.syncBtn, background: '#6C47FF', color: '#fff', border: 'none'}} onClick={() => setShowDapta(true)}>
+              🤖 Agente IA
+            </button>
+          )}
+          {isAdmin && (
+            <button style={{...S.syncBtn, background: '#CC4400', color: '#fff', border: 'none'}} onClick={() => setShowLogistics(true)}>
+              📦 Logística
+            </button>
+          )}
+          <button style={{...S.syncBtn, background: '#1A1916', color: '#fff', border: 'none', fontWeight: 600}} onClick={() => setShowNewLead(true)}>
+            + Nuevo lead
+          </button>
+          {syncMsg && <span style={S.syncMsg}>{syncMsg}</span>}
+          {lastSync && <span style={S.lastSync}>Última sync: {lastSync.toLocaleTimeString()}</span>}
+          <button style={S.outBtn} onClick={signOut}>Salir</button>
         </div>
+      </div>
 
-        <div style={S.main}>
-          {/* ── MÉTRICAS ── */}
-          <div style={S.metrics}>
-            {[
-              { label: 'Total leads',  val: metrics.total,    color: '#1a1a18' },
-              { label: 'Hot leads',    val: metrics.hot,      color: '#D85A30' },
-              { label: 'Clientes',     val: metrics.customer, color: '#1D9E75' },
-              { label: 'Sin contacto', val: metrics.pending,  color: '#BA7517' },
-            ].map(m => (
-              <div style={S.metricCard} key={m.label}>
-                <div style={S.metricLabel}>{m.label}</div>
-                <div style={{ ...S.metricVal, color: m.color }}>{m.val}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* ── FILTROS ── */}
-          <div style={S.filters}>
-            <input style={S.search} placeholder="Buscar nombre, email, teléfono..."
-              value={search} onChange={e => setSearch(e.target.value)} />
-            <select style={S.sel} value={statusFilter} onChange={e => setStatus(e.target.value)}>
-              <option value="">Todos los estados</option>
-              {Object.keys(STATUS_COLORS).map(s => <option key={s}>{s}</option>)}
-            </select>
-            {isAdmin && (
-              <select style={S.sel} value={csFilter} onChange={e => setCSFilter(e.target.value)}>
-                <option value="">Todos los CS</option>
-                {uniqueCS.map(cs => <option key={cs}>{cs}</option>)}
-              </select>
-            )}
-            <span style={S.count}>{filtered.length} leads</span>
-          </div>
-
-          {/* ── TABLA ── */}
-          <div style={S.table}>
-            <div style={S.thead}>
-              <div style={{ width: 36 }} />
-              <div style={{ flex: 2 }}>Lead</div>
-              <div style={{ flex: 2 }}>Contacto</div>
-              <div style={{ flex: 1 }}>Estado</div>
-              <div style={{ flex: 1.5 }}>Intención</div>
-              <div style={{ flex: 1 }}>Fuente</div>
-              <div style={{ width: 80 }}>Toques</div>
-              {isAdmin && <div style={{ flex: 1 }}>CS</div>}
+      <div style={S.main}>
+        {/* ── MÉTRICAS ── */}
+        <div style={S.metrics}>
+          {[
+            { label: 'Total leads', val: metrics.total, color: '#1a1a18' },
+            { label: 'Hot leads',   val: metrics.hot,      color: '#D85A30' },
+            { label: 'Clientes',    val: metrics.customer, color: '#1D9E75' },
+            { label: 'Sin contacto',val: metrics.pending,  color: '#BA7517' },
+          ].map(m => (
+            <div style={S.metricCard} key={m.label}>
+              <div style={S.metricLabel}>{m.label}</div>
+              <div style={{ ...S.metricVal, color: m.color }}>{m.val}</div>
             </div>
-
-            {loading && <div style={S.empty}>Cargando leads...</div>}
-            {!loading && filtered.length === 0 && <div style={S.empty}>Sin leads con esos filtros</div>}
-
-            {!loading && filtered.map(lead => {
-              const sc      = STATUS_COLORS[lead.status] || STATUS_COLORS.New;
-              const touches = lead.touches || [];
-              const calls   = touches.filter(t => t.type === 'call').length;
-              const sms     = touches.filter(t => t.type === 'sms').length;
-              const mails   = touches.filter(t => t.type === 'mail').length;
-              const initials = (lead.full_name || '?').split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
-              const col  = ['#1D9E75','#378ADD','#D4537E','#BA7517','#533AB7','#D85A30'];
-              const c    = col[(lead.full_name||'').charCodeAt(0) % col.length];
-
-              return (
-                <div key={lead.id} style={S.row} onClick={() => setSelected(lead)}>
-                  <div style={{ width: 36 }}>
-                    <div style={{ ...S.avatar, background: c+'22', color: c }}>{initials}</div>
-                  </div>
-                  <div style={{ flex: 2 }}>
-                    <div style={S.name}>{lead.full_name}</div>
-                    <div style={S.sub}>{lead.email}</div>
-                  </div>
-                  <div style={{ flex: 2, fontSize: 12, color: '#5F5E5A' }}>{lead.phone}</div>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ ...S.badge, background: sc.bg, color: sc.color }}>{lead.status}</span>
-                  </div>
-                  <div style={{ flex: 1.5, fontSize: 11, color: '#5F5E5A' }}>
-                    {(lead.intent || '').length > 24 ? lead.intent.slice(0,24)+'…' : lead.intent}
-                  </div>
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#5F5E5A' }}>
-                    {lead.platform && (
-                      <span style={{ ...S.platBadge, background: PLATFORM_COLOR[lead.platform] || '#888' }}>
-                        {PLATFORM_LABEL[lead.platform] || lead.platform}
-                      </span>
-                    )}
-                    {lead.source}
-                  </div>
-                  <div style={{ width: 80, display: 'flex', gap: 3 }}>
-                    {[...Array(calls)].map((_,i) => <div key={'c'+i} style={{...S.dot, background:'#1D9E75'}} title="Llamada"/>)}
-                    {[...Array(sms)].map((_,i)   => <div key={'s'+i} style={{...S.dot, background:'#378ADD'}} title="SMS"/>)}
-                    {[...Array(mails)].map((_,i)  => <div key={'m'+i} style={{...S.dot, background:'#BA7517'}} title="Email"/>)}
-                    {touches.length === 0 && <div style={{...S.dot, background:'#e0ddd6'}}/>}
-                  </div>
-                  {isAdmin && <div style={{ flex: 1, fontSize: 12, color: '#5F5E5A' }}>{lead.assigned_to?.split('@')[0]}</div>}
-                </div>
-              );
-            })}
-          </div>
+          ))}
         </div>
 
-        {/* ── PERFIL LATERAL ── */}
-        {selectedLead && (
-          <LeadProfile
-            lead={selectedLead}
-            isAdmin={isAdmin}
-            userEmail={user.email}
-            onClose={() => setSelected(null)}
-            onUpdate={updated => {
-              setLeads(prev => prev.map(l => l.id === updated.id ? updated : l));
-              setSelected(updated);
-            }}
-          />
-        )}
+        {/* ── FILTROS ── */}
+        <div style={S.filters}>
+          <input style={S.search} placeholder="Buscar nombre, email, teléfono..."
+            value={search} onChange={e => setSearch(e.target.value)} />
+          <select style={S.sel} value={statusFilter} onChange={e => setStatus(e.target.value)}>
+            <option value="">Todos los estados</option>
+            {Object.keys(STATUS_COLORS).map(s => <option key={s}>{s}</option>)}
+          </select>
+          {isAdmin && (
+            <select style={S.sel} value={csFilter} onChange={e => setCSFilter(e.target.value)}>
+              <option value="">Todos los CS</option>
+              {uniqueCS.map(cs => <option key={cs}>{cs}</option>)}
+            </select>
+          )}
+          <span style={S.count}>{filtered.length} leads</span>
+        </div>
 
-        {/* ── MODAL AGREGAR LEAD ── */}
-        {showAddLead && (
-          <AddLeadModal
-            isAdmin={isAdmin}
-            userEmail={user.email}
-            onClose={() => setShowAddLead(false)}
-            onCreated={newLead => {
-              setLeads(prev => [newLead, ...prev]);
-            }}
-          />
-        )}
+        {/* ── TABLA ── */}
+        <div style={S.table}>
+          <div style={S.thead}>
+            <div style={{ width: 36 }} />
+            <div style={{ flex: 2 }}>Lead</div>
+            <div style={{ flex: 2 }}>Contacto</div>
+            <div style={{ flex: 1 }}>Estado</div>
+            <div style={{ flex: 1.5 }}>Intención</div>
+            <div style={{ flex: 1 }}>Fuente</div>
+            <div style={{ width: 80 }}>Toques</div>
+            {isAdmin && <div style={{ flex: 1 }}>CS</div>}
+          </div>
+
+          {loading && <div style={S.empty}>Cargando leads...</div>}
+          {!loading && filtered.length === 0 && <div style={S.empty}>Sin leads con esos filtros</div>}
+
+          {!loading && filtered.map(lead => {
+            const sc = STATUS_COLORS[lead.status] || STATUS_COLORS.New;
+            const touches = lead.touches || [];
+            const calls = touches.filter(t => t.type === 'call').length;
+            const sms   = touches.filter(t => t.type === 'sms').length;
+            const mails = touches.filter(t => t.type === 'mail').length;
+            const initials = (lead.full_name || '?').split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
+            const col = ['#1D9E75','#378ADD','#D4537E','#BA7517','#533AB7','#D85A30'];
+            const c = col[(lead.full_name||'').charCodeAt(0) % col.length];
+
+            return (
+              <div key={lead.id} style={S.row} onClick={() => setSelected(lead)}>
+                <div style={{ width: 36 }}>
+                  <div style={{ ...S.avatar, background: c+'22', color: c }}>{initials}</div>
+                </div>
+                <div style={{ flex: 2 }}>
+                  <div style={S.name}>{lead.full_name}</div>
+                  <div style={S.sub}>{lead.email}</div>
+                </div>
+                <div style={{ flex: 2, fontSize: 12, color: '#5F5E5A' }}>{lead.phone}</div>
+                <div style={{ flex: 1 }}>
+                  <span style={{ ...S.badge, background: sc.bg, color: sc.color }}>{lead.status}</span>
+                </div>
+                <div style={{ flex: 1.5, fontSize: 11, color: '#5F5E5A' }}>
+                  {(lead.intent || '').length > 24 ? lead.intent.slice(0,24)+'…' : lead.intent}
+                </div>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#5F5E5A' }}>
+                  {lead.platform && (
+                    <span style={{ ...S.platBadge, background: PLATFORM_COLOR[lead.platform] || '#888' }}>
+                      {PLATFORM_LABEL[lead.platform] || lead.platform}
+                    </span>
+                  )}
+                  {lead.source}
+                </div>
+                <div style={{ width: 80, display: 'flex', gap: 3 }}>
+                  {[...Array(calls)].map((_,i) => <div key={'c'+i} style={{...S.dot, background:'#1D9E75'}} title="Llamada"/>)}
+                  {[...Array(sms)].map((_,i)   => <div key={'s'+i} style={{...S.dot, background:'#378ADD'}} title="SMS"/>)}
+                  {[...Array(mails)].map((_,i)  => <div key={'m'+i} style={{...S.dot, background:'#BA7517'}} title="Email"/>)}
+                  {touches.length === 0 && <div style={{...S.dot, background:'#e0ddd6'}}/>}
+                </div>
+                {isAdmin && <div style={{ flex: 1, fontSize: 12, color: '#5F5E5A' }}>{lead.assigned_to?.split('@')[0]}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── PERFIL LATERAL ── */}
+      {/* ── MODAL NUEVO LEAD ── */}
+      {showNewLead && <NewLeadModal
+        onClose={() => setShowNewLead(false)}
+        onSave={(lead) => { setLeads(prev => [lead, ...prev]); setShowNewLead(false); }}
+        userEmail={user.email}
+        isAdmin={isAdmin}
+      />}
+
+      {selectedLead && (
+        <LeadProfile
+          lead={selectedLead}
+          isAdmin={isAdmin}
+          userEmail={user.email}
+          onClose={() => setSelected(null)}
+          onUpdate={updated => {
+            setLeads(prev => prev.map(l => l.id === updated.id ? updated : l));
+            setSelected(updated);
+          }}
+        />
+      )}
       </>}
     </div>
   );
 }
 
 const S = {
-  wrap:      { minHeight: '100vh', background: '#f5f5f3', fontFamily: 'system-ui, sans-serif' },
-  topbar:    { background: 'white', borderBottom: '0.5px solid #e0ddd6', padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  topLeft:   { display: 'flex', alignItems: 'center', gap: 12 },
-  logoIcon:  { width: 32, height: 32, borderRadius: 8, background: '#1D9E75', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  logoText:  { fontSize: 15, fontWeight: 600, color: '#1a1a18' },
-  userBadge: { fontSize: 12, background: '#EAF3DE', color: '#3B6D11', padding: '3px 10px', borderRadius: 100, fontWeight: 500 },
-  addBtn:    { padding: '7px 14px', borderRadius: 8, border: 'none', background: '#1D9E75', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
-  syncBtn:   { padding: '7px 14px', borderRadius: 8, border: '0.5px solid #ccc', background: 'white', fontSize: 13, cursor: 'pointer', color: '#1a1a18' },
-  syncMsg:   { fontSize: 12, color: '#1D9E75', fontWeight: 500 },
-  lastSync:  { fontSize: 11, color: '#888780' },
-  outBtn:    { padding: '7px 14px', borderRadius: 8, border: '0.5px solid #ccc', background: 'white', fontSize: 13, cursor: 'pointer', color: '#A32D2D' },
-  main:      { padding: 20 },
-  metrics:   { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 },
+  wrap:    { minHeight: '100vh', background: '#f5f5f3', fontFamily: 'system-ui, sans-serif' },
+  topbar:  { background: 'white', borderBottom: '0.5px solid #e0ddd6', padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  topLeft: { display: 'flex', alignItems: 'center', gap: 12 },
+  logoIcon:{ width: 32, height: 32, borderRadius: 8, background: '#1D9E75', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  logoText:{ fontSize: 15, fontWeight: 600, color: '#1a1a18' },
+  userBadge:{ fontSize: 12, background: '#EAF3DE', color: '#3B6D11', padding: '3px 10px', borderRadius: 100, fontWeight: 500 },
+  syncBtn: { padding: '7px 14px', borderRadius: 8, border: '0.5px solid #ccc', background: 'white', fontSize: 13, cursor: 'pointer', color: '#1a1a18' },
+  syncMsg: { fontSize: 12, color: '#1D9E75', fontWeight: 500 },
+  lastSync:{ fontSize: 11, color: '#888780' },
+  outBtn:  { padding: '7px 14px', borderRadius: 8, border: '0.5px solid #ccc', background: 'white', fontSize: 13, cursor: 'pointer', color: '#A32D2D' },
+  main:    { padding: 20 },
+  metrics: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 },
   metricCard:  { background: 'white', borderRadius: 10, padding: '14px 16px', border: '0.5px solid #e0ddd6' },
   metricLabel: { fontSize: 12, color: '#888780', marginBottom: 6 },
   metricVal:   { fontSize: 24, fontWeight: 600 },
-  filters:   { display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' },
-  search:    { flex: 1, minWidth: 200, padding: '8px 12px', border: '0.5px solid #ccc', borderRadius: 8, fontSize: 13, outline: 'none', background: 'white' },
-  sel:       { padding: '8px 10px', border: '0.5px solid #ccc', borderRadius: 8, fontSize: 12, background: 'white' },
-  count:     { fontSize: 12, color: '#888780', marginLeft: 'auto' },
-  table:     { background: 'white', borderRadius: 12, border: '0.5px solid #e0ddd6', overflow: 'hidden' },
-  thead:     { display: 'flex', alignItems: 'center', padding: '10px 16px', borderBottom: '0.5px solid #e0ddd6', background: '#f9f8f5', gap: 12, fontSize: 11, fontWeight: 600, color: '#888780', textTransform: 'uppercase', letterSpacing: '0.04em' },
-  row:       { display: 'flex', alignItems: 'center', padding: '11px 16px', borderBottom: '0.5px solid #f0ede6', cursor: 'pointer', gap: 12, transition: 'background 0.1s' },
-  avatar:    { width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600 },
-  name:      { fontSize: 13, fontWeight: 500, color: '#1a1a18' },
-  sub:       { fontSize: 11, color: '#888780' },
-  badge:     { display: 'inline-block', padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 500 },
-  platBadge: { display: 'inline-block', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700, color: 'white' },
-  dot:       { width: 10, height: 10, borderRadius: '50%' },
-  empty:     { padding: '40px', textAlign: 'center', color: '#888780', fontSize: 14 },
+  filters: { display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' },
+  search:  { flex: 1, minWidth: 200, padding: '8px 12px', border: '0.5px solid #ccc', borderRadius: 8, fontSize: 13, outline: 'none', background: 'white' },
+  sel:     { padding: '8px 10px', border: '0.5px solid #ccc', borderRadius: 8, fontSize: 12, background: 'white' },
+  count:   { fontSize: 12, color: '#888780', marginLeft: 'auto' },
+  table:   { background: 'white', borderRadius: 12, border: '0.5px solid #e0ddd6', overflow: 'hidden' },
+  thead:   { display: 'flex', alignItems: 'center', padding: '10px 16px', borderBottom: '0.5px solid #e0ddd6', background: '#f9f8f5', gap: 12 },
+  row:     { display: 'flex', alignItems: 'center', padding: '11px 16px', borderBottom: '0.5px solid #f0ede6', cursor: 'pointer', gap: 12, transition: 'background 0.1s' },
+  avatar:  { width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600 },
+  name:    { fontSize: 13, fontWeight: 500, color: '#1a1a18' },
+  sub:     { fontSize: 11, color: '#888780' },
+  badge:   { display: 'inline-block', padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 500 },
+  platBadge:{ display: 'inline-block', padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700, color: 'white' },
+  dot:     { width: 10, height: 10, borderRadius: '50%' },
+  empty:   { padding: '40px', textAlign: 'center', color: '#888780', fontSize: 14 },
 };
