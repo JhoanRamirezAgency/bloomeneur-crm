@@ -79,7 +79,16 @@ function groupByOrder(rows, priceCol, priceCol2) {
 function fmtDate(str) {
   if (!str) return '—';
   try {
-    const d = new Date(str);
+    // Parsear como fecha local (sin conversión de zona horaria)
+    // Formato esperado: YYYY-MM-DD o MM/DD/YYYY
+    const s = String(str).trim();
+    let d;
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+      // Formato ISO: agregar T12:00:00 para evitar problema de zona horaria
+      d = new Date(s.slice(0, 10) + 'T12:00:00');
+    } else {
+      d = new Date(s);
+    }
     if (isNaN(d)) return str;
     return d.toLocaleDateString('es-CO', { month: 'short', day: 'numeric', year: 'numeric' });
   } catch { return str; }
