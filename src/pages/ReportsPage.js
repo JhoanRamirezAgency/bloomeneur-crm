@@ -60,10 +60,25 @@ export default function ReportsPage({ onBack }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.from('leads').select('*').then(({ data }) => {
-      setLeads(data || []);
+    async function loadAll() {
+      let all = [];
+      let page = 0;
+      const size = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from('leads')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(page * size, (page + 1) * size - 1);
+        if (error || !data || data.length === 0) break;
+        all = [...all, ...data];
+        if (data.length < size) break;
+        page++;
+      }
+      setLeads(all);
       setLoading(false);
-    });
+    }
+    loadAll();
   }, []);
 
   if (loading) return <div style={S.loading}>Cargando estadísticas...</div>;
@@ -113,9 +128,19 @@ export default function ReportsPage({ onBack }) {
     byIntent[intentKey] = (byIntent[intentKey] || 0) + 1;
   });
 
-  const totalTouches = Object.values(contactTypes).reduce((a, b) => a + b, 0);
-  const totalCalls   = callResults.Answered + callResults['No answer'] + callResults.Voicemail;
-  const answeredRate = totalCalls > 0 ? Math.round(callResults.Answered / totalCalls * 100) : 0;
+  const totalTouches  = Object.values(contactTypes).reduce((a, b) => a + b, 0);
+  const totalCalls    = callResults.Answered + callResults['No answer'] + callResults.Voicemail;
+  const answeredRate  = totalCalls > 0 ? Math.round(callResults.Answered / totalCalls * 100) : 0;
+  // Leads contactados: tienen al menos 1 toque
+  const contactados   = leads.filter(l => (l.touches || []).length > 0).length;
+  const noContactados = leads.filter(l => (l.touches || []).length === 0).length;
+  // Contactados por IA: toques donde cs contiene 'dapta', 'ia', 'ai', 'bot' o es un email de sistema
+  const contactadosIA = leads.filter(l =>
+    (l.touches || []).some(t => {
+      const cs = (t.cs || t.cs_email || '').toLowerCase();
+      return cs.includes('dapta') || cs.includes('bot') || cs.includes('ia@') || cs.includes('ai@') || t.type === 'ai';
+    })
+  ).length;
 
   const statusColors = {
     New: '#378ADD', Hot: '#D85A30', Maybe: '#BA7517', Customer: '#1D9E75', Lost: '#888780',
@@ -151,10 +176,24 @@ export default function ReportsPage({ onBack }) {
         {/* ── MÉTRICAS PRINCIPALES ── */}
         <div style={S.grid4}>
           {[
-            { label: 'Total leads',          val: leads.length,               color: '#1a1a18' },
-            { label: 'Sin contacto',          val: touchCounts[0],             color: '#D85A30', pct: Math.round(touchCounts[0] / total * 100) + '%' },
-            { label: 'Tasa de respuesta',     val: answeredRate + '%',         color: '#1D9E75' },
-            { label: 'Clientes convertidos',  val: byStatus['Customer'] || 0, color: '#1D9E75', pct: Math.round((byStatus['Customer'] || 0) / total * 100) + '%' },
+            { label: 'Total leads',          val: leads.length,               color: '#1a1a18', pct: null },
+            { label: 'Leads contactados',     val: contactados,                color: '#1D9E75', pct: Math.round(contactados / (leads.length || 1) * 100) + '%' },
+            { label: 'Sin contacto',          val: noContactados,              color: '#D85A30', pct: Math.round(noContactados / (leads.length || 1) * 100) + '%' },
+            { label: 'Clientes convertidos',  val: byStatus['Customer'] || 0,  color: '#1D9E75', pct: Math.round((byStatus['Customer'] || 0) / (leads.length || 1) * 100) + '%' },
+          ].map(m => (
+            <div style={S.metricCard} key={m.label}>
+              <div style={S.metricLabel}>{m.label}</div>
+              <div style={{ ...S.metricVal, color: m.color }}>{m.val}</div>
+              {m.pct && <div style={S.metricPct}>{m.pct} del total</div>}
+            </div>
+          ))}
+        </div>
+        {/* ── MÉTRICAS SECUNDARIAS: IA y tasa de respuesta ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+          {[
+            { label: '🤖 Contactados por IA',  val: contactadosIA,  color: '#6C47FF', pct: Math.round(contactadosIA / (leads.length || 1) * 100) + '%' },
+            { label: '📞 Tasa de contestación', val: answeredRate + '%', color: '#1D9E75', pct: null },
+            { label: '🔥 Hot leads activos',    val: byStatus['Hot'] || 0, color: '#D85A30', pct: Math.round((byStatus['Hot'] || 0) / (leads.length || 1) * 100) + '%' },
           ].map(m => (
             <div style={S.metricCard} key={m.label}>
               <div style={S.metricLabel}>{m.label}</div>
