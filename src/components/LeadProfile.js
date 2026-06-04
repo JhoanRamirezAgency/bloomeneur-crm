@@ -257,12 +257,15 @@ export default function LeadProfile({ lead, isAdmin, userEmail, onClose, onUpdat
 
   async function addTouch() {
     if (!touchResult.trim()) return;
+    // Siempre guardar cs: userEmail tiene prioridad,
+    // si no está, usar assigned_to del lead para que los reportes cuadren
+    const csEmail = userEmail || lead.assigned_to || '';
     const touch = {
       type:   touchType,
       result: touchResult.trim(),
       note:   touchNote.trim(),
       date:   touchDate,
-      cs:     userEmail,
+      cs:     csEmail,
     };
     const newTouches = [...(lead.touches || []), touch];
     await saveField({ touches: newTouches });
@@ -274,9 +277,13 @@ export default function LeadProfile({ lead, isAdmin, userEmail, onClose, onUpdat
   // ── Edit existing touch ──
   async function handleTouchUpdate(index, updatedTouch) {
     const touches = [...(lead.touches || [])];
-    // Index is from reversed array, so map back
     const realIndex = touches.length - 1 - index;
-    touches[realIndex] = updatedTouch;
+    // Preservar cs original; si no tiene, asignar el del lead
+    const fixedTouch = {
+      ...updatedTouch,
+      cs: updatedTouch.cs || userEmail || lead.assigned_to || '',
+    };
+    touches[realIndex] = fixedTouch;
     await saveField({ touches });
   }
 
