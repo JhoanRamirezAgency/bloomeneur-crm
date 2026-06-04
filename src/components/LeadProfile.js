@@ -34,15 +34,151 @@ const CS_USERS = [
 const TOUCH_ICONS = { call: '📞', sms: '💬', mail: '📧', note: '📝' };
 const TOUCH_COLORS = { call: '#1D9E75', sms: '#378ADD', mail: '#BA7517', note: '#888780' };
 
-function InfoItem({ label, val }) {
+// ── Editable inline field ──────────────────────────────────────────────────
+function EditableField({ label, value, onSave, type = 'text', multiline = false }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft]     = useState(value || '');
+
+  function handleSave() {
+    setEditing(false);
+    if (draft !== value) onSave(draft);
+  }
+
+  const lbl = { fontSize: 10, color: '#888780', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2, display: 'block' };
+  const inp = { padding: '6px 10px', border: '1px solid #378ADD', borderRadius: 7, fontSize: 13, width: '100%', boxSizing: 'border-box', fontFamily: 'system-ui', outline: 'none', background: '#f8fbff' };
+
   return (
     <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 10, color: '#888780', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: 13, color: '#1a1a18', fontWeight: 400 }}>{val || <span style={{ color: '#ccc' }}>—</span>}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+        <span style={lbl}>{label}</span>
+        {!editing && (
+          <button
+            onClick={() => { setDraft(value || ''); setEditing(true); }}
+            style={{ fontSize: 10, color: '#378ADD', background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1 }}>
+            ✏️ Editar
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div>
+          {multiline
+            ? <textarea
+                autoFocus
+                style={{ ...inp, minHeight: 60, resize: 'vertical', marginBottom: 6 }}
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+              />
+            : <input
+                autoFocus
+                type={type}
+                style={{ ...inp, marginBottom: 6 }}
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setEditing(false); }}
+              />
+          }
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={handleSave}
+              style={{ padding: '4px 14px', borderRadius: 7, border: 'none', background: '#1D9E75', color: 'white', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+              Guardar
+            </button>
+            <button onClick={() => setEditing(false)}
+              style={{ padding: '4px 10px', borderRadius: 7, border: '0.5px solid #ccc', background: 'white', fontSize: 11, cursor: 'pointer' }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ fontSize: 13, color: '#1a1a18', fontWeight: 400 }}>
+          {value || <span style={{ color: '#ccc' }}>—</span>}
+        </div>
+      )}
     </div>
   );
 }
 
+// ── Editable touch (registro de contacto) ─────────────────────────────────
+function TouchItem({ touch, index, onUpdate, onDelete, userEmail }) {
+  const [editing, setEditing]     = useState(false);
+  const [result, setResult]       = useState(touch.result || '');
+  const [note, setNote]           = useState(touch.note || '');
+  const [date, setDate]           = useState(touch.date || '');
+  const [touchType, setTouchType] = useState(touch.type || 'call');
+
+  const inp = { padding: '6px 10px', border: '1px solid #e0ddd6', borderRadius: 7, fontSize: 12, width: '100%', boxSizing: 'border-box', fontFamily: 'system-ui' };
+  const lbl = { fontSize: 10, color: '#888780', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3, display: 'block' };
+
+  function handleSave() {
+    onUpdate(index, { ...touch, type: touchType, result, note, date });
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div style={{ background: '#f9f8f5', borderRadius: 8, padding: 12, marginBottom: 8, border: '1px solid #378ADD' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+          <div>
+            <label style={lbl}>Tipo</label>
+            <select style={inp} value={touchType} onChange={e => setTouchType(e.target.value)}>
+              <option value="call">📞 Llamada</option>
+              <option value="sms">💬 SMS / WhatsApp</option>
+              <option value="mail">📧 Email</option>
+              <option value="note">📝 Nota</option>
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Fecha</label>
+            <input type="date" style={inp} value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <label style={lbl}>Resultado / respuesta</label>
+          <input style={inp} value={result} onChange={e => setResult(e.target.value)} placeholder="Contestó, dejó buzón, interesado..." />
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <label style={lbl}>Nota adicional</label>
+          <textarea style={{ ...inp, minHeight: 50, resize: 'vertical' }} value={note} onChange={e => setNote(e.target.value)} placeholder="Detalles..." />
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={handleSave}
+            style={{ flex: 1, padding: '7px', borderRadius: 8, border: 'none', background: '#1D9E75', color: 'white', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+            Guardar cambios
+          </button>
+          <button onClick={() => setEditing(false)}
+            style={{ padding: '7px 12px', borderRadius: 8, border: '0.5px solid #ccc', background: 'white', fontSize: 12, cursor: 'pointer' }}>
+            Cancelar
+          </button>
+          <button onClick={() => onDelete(index)}
+            style={{ padding: '7px 12px', borderRadius: 8, border: '0.5px solid #FECACA', background: '#FEF2F2', color: '#DC2626', fontSize: 12, cursor: 'pointer' }}>
+            🗑️ Eliminar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 10, padding: '8px 0', borderBottom: '0.5px solid #f0ede6', alignItems: 'flex-start' }}>
+      <div style={{ fontSize: 18, marginTop: 2 }}>{TOUCH_ICONS[touch.type] || '📌'}</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 12, fontWeight: 500, color: TOUCH_COLORS[touch.type] || '#888' }}>
+          {touch.type === 'call' ? 'Llamada' : touch.type === 'sms' ? 'SMS/WhatsApp' : touch.type === 'mail' ? 'Email' : 'Nota'}
+          {touch.date && <span style={{ fontWeight: 400, color: '#888780', marginLeft: 6 }}>· {touch.date}</span>}
+        </div>
+        <div style={{ fontSize: 12, color: '#1a1a18', marginTop: 2 }}>{touch.result}</div>
+        {touch.note && <div style={{ fontSize: 11, color: '#888780', marginTop: 2 }}>{touch.note}</div>}
+        {touch.cs && <div style={{ fontSize: 10, color: '#ccc', marginTop: 2 }}>{touch.cs}</div>}
+      </div>
+      <button onClick={() => setEditing(true)}
+        style={{ fontSize: 10, color: '#888780', background: '#f0ede6', border: 'none', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', whiteSpace: 'nowrap', marginTop: 2 }}>
+        ✏️ Editar
+      </button>
+    </div>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────
 export default function LeadProfile({ lead, isAdmin, userEmail, onClose, onUpdate }) {
   const [saving, setSaving]     = useState(false);
   const [status, setStatus]     = useState(lead.status || 'New');
@@ -51,19 +187,19 @@ export default function LeadProfile({ lead, isAdmin, userEmail, onClose, onUpdat
   const [years, setYears]       = useState(lead.years_in_market || '');
 
   // Pendiente
-  const [hasPending, setHasPending]     = useState(!!lead.has_pending);
-  const [pendingNote, setPendingNote]   = useState(lead.pending_note || '');
-  const [pendingDue, setPendingDue]     = useState(lead.pending_due || '');
+  const [hasPending, setHasPending]       = useState(!!lead.has_pending);
+  const [pendingNote, setPendingNote]     = useState(lead.pending_note || '');
+  const [pendingDue, setPendingDue]       = useState(lead.pending_due || '');
   const [showPendingForm, setShowPending] = useState(false);
 
   // Touch
-  const [showTouchForm, setShowTouch]   = useState(false);
-  const [touchType, setTouchType]       = useState('call');
-  const [touchResult, setTouchResult]   = useState('');
-  const [touchNote, setTouchNote]       = useState('');
-  const [touchDate, setTouchDate]       = useState(new Date().toISOString().slice(0,10));
+  const [showTouchForm, setShowTouch] = useState(false);
+  const [touchType, setTouchType]     = useState('call');
+  const [touchResult, setTouchResult] = useState('');
+  const [touchNote, setTouchNote]     = useState('');
+  const [touchDate, setTouchDate]     = useState(new Date().toISOString().slice(0,10));
 
-  const canEdit = true; // Supabase RLS handles real security
+  const canEdit = true;
 
   async function saveField(fields) {
     setSaving(true);
@@ -75,6 +211,11 @@ export default function LeadProfile({ lead, isAdmin, userEmail, onClose, onUpdat
       .single();
     if (!error && data) onUpdate(data);
     setSaving(false);
+  }
+
+  // ── Contact info field save ──
+  async function handleContactField(fieldName, value) {
+    await saveField({ [fieldName]: value || null });
   }
 
   async function handleStatusChange(newStatus) {
@@ -128,6 +269,23 @@ export default function LeadProfile({ lead, isAdmin, userEmail, onClose, onUpdat
     setTouchResult(''); setTouchNote('');
     setTouchDate(new Date().toISOString().slice(0,10));
     setShowTouch(false);
+  }
+
+  // ── Edit existing touch ──
+  async function handleTouchUpdate(index, updatedTouch) {
+    const touches = [...(lead.touches || [])];
+    // Index is from reversed array, so map back
+    const realIndex = touches.length - 1 - index;
+    touches[realIndex] = updatedTouch;
+    await saveField({ touches });
+  }
+
+  // ── Delete touch ──
+  async function handleTouchDelete(index) {
+    const touches = [...(lead.touches || [])];
+    const realIndex = touches.length - 1 - index;
+    touches.splice(realIndex, 1);
+    await saveField({ touches });
   }
 
   const sc = STATUS_COLORS[status] || STATUS_COLORS.New;
@@ -258,16 +416,46 @@ export default function LeadProfile({ lead, isAdmin, userEmail, onClose, onUpdat
             )}
           </div>
 
-          {/* ── INFORMACIÓN DE CONTACTO ── */}
+          {/* ── INFORMACIÓN DE CONTACTO (EDITABLE) ── */}
           <div style={P.section}>
             <div style={P.sectionTitle}>Información de contacto</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <InfoItem label="Teléfono"   val={lead.phone} />
-              <InfoItem label="Email"      val={lead.email} />
-              <InfoItem label="Intención"  val={lead.intent} />
-              <InfoItem label="Timeline"   val={lead.timeline} />
-              <InfoItem label="Registrado" val={lead.created_at ? format(new Date(lead.created_at), 'dd/MM/yyyy') : '—'} />
-              <InfoItem label="Fuente"     val={lead.source} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px' }}>
+              <EditableField
+                label="Teléfono"
+                value={lead.phone}
+                type="tel"
+                onSave={v => handleContactField('phone', v)}
+              />
+              <EditableField
+                label="Email"
+                value={lead.email}
+                type="email"
+                onSave={v => handleContactField('email', v)}
+              />
+              <EditableField
+                label="Nombre completo"
+                value={lead.full_name}
+                onSave={v => handleContactField('full_name', v)}
+              />
+              <EditableField
+                label="Fuente"
+                value={lead.source}
+                onSave={v => handleContactField('source', v)}
+              />
+              <EditableField
+                label="Intención"
+                value={lead.intent}
+                multiline
+                onSave={v => handleContactField('intent', v)}
+              />
+              <EditableField
+                label="Timeline"
+                value={lead.timeline}
+                onSave={v => handleContactField('timeline', v)}
+              />
+            </div>
+            <div style={{ marginTop: 4, fontSize: 11, color: '#aaa' }}>
+              📅 Registrado: {lead.created_at ? format(new Date(lead.created_at), 'dd/MM/yyyy') : '—'}
             </div>
           </div>
 
@@ -281,7 +469,7 @@ export default function LeadProfile({ lead, isAdmin, userEmail, onClose, onUpdat
             </div>
           )}
 
-          {/* ── HISTORIAL DE CONTACTOS ── */}
+          {/* ── HISTORIAL DE CONTACTOS (EDITABLE) ── */}
           <div style={P.section}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <div style={P.sectionTitle}>Historial de contactos ({(lead.touches||[]).length})</div>
@@ -332,18 +520,14 @@ export default function LeadProfile({ lead, isAdmin, userEmail, onClose, onUpdat
             {(lead.touches || []).length === 0 && <div style={{ fontSize: 12, color: '#ccc' }}>Sin intentos de contacto aún.</div>}
 
             {[...(lead.touches || [])].reverse().map((t, i) => (
-              <div key={i} style={{ display: 'flex', gap: 10, padding: '8px 0', borderBottom: '0.5px solid #f0ede6' }}>
-                <div style={{ fontSize: 18 }}>{TOUCH_ICONS[t.type] || '📌'}</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 12, fontWeight: 500, color: TOUCH_COLORS[t.type] || '#888' }}>
-                    {t.type === 'call' ? 'Llamada' : t.type === 'sms' ? 'SMS/WhatsApp' : t.type === 'mail' ? 'Email' : 'Nota'}
-                    {t.date && <span style={{ fontWeight: 400, color: '#888780', marginLeft: 6 }}>· {t.date}</span>}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#1a1a18', marginTop: 2 }}>{t.result}</div>
-                  {t.note && <div style={{ fontSize: 11, color: '#888780', marginTop: 2 }}>{t.note}</div>}
-                  {t.cs && <div style={{ fontSize: 10, color: '#ccc', marginTop: 2 }}>{t.cs}</div>}
-                </div>
-              </div>
+              <TouchItem
+                key={i}
+                touch={t}
+                index={i}
+                userEmail={userEmail}
+                onUpdate={handleTouchUpdate}
+                onDelete={handleTouchDelete}
+              />
             ))}
           </div>
         </div>
