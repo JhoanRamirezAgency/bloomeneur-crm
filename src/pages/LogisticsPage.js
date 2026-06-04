@@ -191,7 +191,7 @@ export default function LogisticsPage({ onBack }) {
   const pendientes  = resumen.filter(o => !o.listo).length;
   const conNovedad  = resumen.filter(o => o.novedad && o.novedad.trim()).length;
 
-  // Clientes recurrentes (por email, más de 1 orden en historial)
+  // Todos los clientes únicos (han comprado al menos 1 vez en historial)
   const clientMap = {};
   historial.forEach(o => {
     const key = o.email || o.cliente;
@@ -200,7 +200,9 @@ export default function LogisticsPage({ onBack }) {
     clientMap[key].orders.push(o);
     clientMap[key].total += o.precio_pag || 0;
   });
-  const recurrentes = Object.values(clientMap).filter(c => c.orders.length > 1).sort((a,b) => b.orders.length - a.orders.length);
+  const todosClientes = Object.values(clientMap).sort((a,b) => b.orders.length - a.orders.length);
+  const recurrentes   = todosClientes.filter(c => c.orders.length > 1);
+  const totalClientes = todosClientes.length;
 
   // Colecciones más vendidas
   const colCount = {};
@@ -259,9 +261,9 @@ export default function LogisticsPage({ onBack }) {
             <div style={S.cardSub}>{pendientes} pendientes de procesar</div>
           </div>
           <div style={S.card}>
-            <div style={S.cardLabel}>Ventas completadas</div>
-            <div style={S.cardVal}>{historial.length}</div>
-            <div style={S.cardSub}>{fmtMoney(histRev)} cobrado</div>
+            <div style={S.cardLabel}>Clientes únicos</div>
+            <div style={{ ...S.cardVal, color: '#6B21A8' }}>{totalClientes}</div>
+            <div style={S.cardSub}>{historial.length} órdenes · {recurrentes.length} recurrentes</div>
           </div>
         </div>
 
@@ -327,7 +329,7 @@ export default function LogisticsPage({ onBack }) {
         <div style={S.section}>
           <div style={S.secHead}>
             <div style={{ display: 'flex', gap: 8 }}>
-              {[['activas', `Activas (${resumen.length})`], ['historial', `Historial (${historial.length})`], ['recurrentes', `Recurrentes (${recurrentes.length})`]].map(([t, label]) => (
+              {[['activas', `Activas (${resumen.length})`], ['historial', `Historial (${historial.length})`], ['recurrentes', `Clientes (${todosClientes.length})`]].map(([t, label]) => (
                 <button key={t} style={S.tab(tab === t)} onClick={() => setTab(t)}>{label}</button>
               ))}
             </div>
@@ -455,7 +457,7 @@ export default function LogisticsPage({ onBack }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {recurrentes.map((c, i) => {
+                  {todosClientes.map((c, i) => {
                     const cols = {};
                     c.orders.forEach(o => {
                       const col = (o.coleccion || '').split(' ')[0].toLowerCase();
@@ -478,8 +480,8 @@ export default function LogisticsPage({ onBack }) {
                       </tr>
                     );
                   })}
-                  {recurrentes.length === 0 && (
-                    <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: '#A8A79D', fontSize: 13 }}>Sin clientes recurrentes aún</td></tr>
+                  {todosClientes.length === 0 && (
+                    <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: '#A8A79D', fontSize: 13 }}>Sin clientes aún</td></tr>
                   )}
                 </tbody>
               </table>
