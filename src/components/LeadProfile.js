@@ -63,7 +63,7 @@ export default function LeadProfile({ lead, isAdmin, userEmail, onClose, onUpdat
   const [touchNote, setTouchNote]       = useState('');
   const [touchDate, setTouchDate]       = useState(new Date().toISOString().slice(0,10));
 
-  const canEdit = isAdmin || userEmail === lead.assigned_to;
+  const canEdit = true; // Supabase RLS handles real security
 
   async function saveField(fields) {
     setSaving(true);
