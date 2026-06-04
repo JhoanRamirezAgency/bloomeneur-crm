@@ -215,6 +215,14 @@ export default function Dashboard() {
   const [pendingFilter, setPendingFilter] = useState(false);
   const [lastSync, setLastSync]         = useState(null);
   const [showNewLead, setShowNewLead]   = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  // ── Botón scroll arriba ────────────────────────────────────────────────────
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 350);
+    window.addEventListener('scroll', onScroll);
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   // ── Cargar leads ──────────────────────────────────────────────────────────
   const loadLeads = useCallback(async () => {
@@ -507,6 +515,22 @@ export default function Dashboard() {
               setSelected(updated);
             }}
           />
+        )}
+
+        {/* ── BOTÓN VOLVER ARRIBA ── */}
+        {showScrollTop && (
+          <button
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            title="Volver arriba"
+            style={{
+              position: 'fixed', bottom: 28, right: 28, zIndex: 200,
+              width: 44, height: 44, borderRadius: '50%',
+              background: '#1A1916', color: '#fff', border: 'none',
+              fontSize: 20, cursor: 'pointer',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >↑</button>
         )}
 
         {/* ── MODAL NUEVO LEAD ── */}
