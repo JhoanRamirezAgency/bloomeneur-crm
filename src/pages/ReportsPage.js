@@ -56,32 +56,66 @@ function Bar({ value, max, color }) {
 
 export default function ReportsPage({ onBack }) {
   const { user } = useAuth();
-  const [leads, setLeads]   = useState([]);
+  const [leads, setLeads]     = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadAll() {
-      let all = [];
-      let page = 0;
-      const size = 1000;
-      while (true) {
-        const { data, error } = await supabase
-          .from('leads')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .range(page * size, (page + 1) * size - 1);
-        if (error || !data || data.length === 0) break;
-        all = [...all, ...data];
-        if (data.length < size) break;
-        page++;
+      try {
+        let all = [];
+        let page = 0;
+        const size = 1000;
+        const MAX_PAGES = 20;
+
+        while (page < MAX_PAGES) {
+          const { data, error } = await supabase
+            .from('leads')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .range(page * size, (page + 1) * size - 1);
+
+          if (error) {
+            console.error('Supabase error en ReportsPage:', error);
+            if (!cancelled) setLoadError(error.message || 'Error al cargar datos');
+            break;
+          }
+          if (!data || data.length === 0) break;
+          all = [...all, ...data];
+          if (data.length < size) break;
+          page++;
+        }
+
+        if (!cancelled) {
+          setLeads(all);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Error inesperado en ReportsPage:', err);
+        if (!cancelled) {
+          setLoadError('Error inesperado al cargar los reportes.');
+          setLoading(false);
+        }
       }
-      setLeads(all);
-      setLoading(false);
     }
+
     loadAll();
+    return () => { cancelled = true; };
   }, []);
 
   if (loading) return <div style={S.loading}>Cargando estadísticas...</div>;
+  if (loadError) return (
+    <div style={{ ...S.loading, color: '#D85A30' }}>
+      <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
+      <div style={{ fontWeight: 600, marginBottom: 6 }}>No se pudieron cargar los reportes</div>
+      <div style={{ fontSize: 12, color: '#888780', marginBottom: 16 }}>{loadError}</div>
+      <button onClick={onBack} style={{ padding: '8px 20px', borderRadius: 8, border: '0.5px solid #ccc', background: 'white', fontSize: 13, cursor: 'pointer' }}>
+        ← Volver
+      </button>
+    </div>
+  );
 
   const total = leads.length || 1;
   const byStatus  = {};
@@ -113,7 +147,9 @@ export default function ReportsPage({ onBack }) {
       if (touch.type) contactTypes[touch.type] = (contactTypes[touch.type] || 0) + 1;
       if (touch.type === 'call' && touch.result)
         callResults[touch.result] = (callResults[touch.result] || 0) + 1;
-      const tcsName = CS_NAMES[touch.cs] || touch.cs?.split('@')[0] || 'N/A';
+      // Si touch.cs está vacío, usar lead.assigned_to como respaldo
+      const touchCs   = touch.cs || lead.assigned_to || '';
+      const tcsName   = CS_NAMES[touchCs] || touchCs.split('@')[0] || 'Sin asignar';
       if (!csActivity[tcsName]) csActivity[tcsName] = { call: 0, sms: 0, mail: 0 };
       if (touch.type) csActivity[tcsName][touch.type] = (csActivity[tcsName][touch.type] || 0) + 1;
     });
