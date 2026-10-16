@@ -4,7 +4,7 @@ const SHEET_ID = process.env.REACT_APP_LOGISTICS_SHEET_ID || '1Z6hxb_Z9TPDbAA8l9
 const API_KEY  = process.env.REACT_APP_GOOGLE_API_KEY;
 
 async function fetchSheet(sheetName) {
-  const range = encodeURIComponent(`${sheetName}!A1:Z500`);
+  const range = encodeURIComponent(`${sheetName}!A1:AZ20000`);
   const url   = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${API_KEY}`;
   const res   = await fetch(url);
   if (!res.ok) throw new Error(`Sheets error ${res.status}`);
@@ -26,6 +26,16 @@ function parsePrice(val) {
   // Quitar $, espacios, y manejar tanto punto como coma decimal
   const clean = String(val).replace(/[$\s]/g, '').replace(/,(?=\d{2}$)/, '.');
   return parseFloat(clean) || 0;
+}
+
+// Columna opcional para registrar dinero devuelto en la hoja (cualquiera de estos nombres)
+const REFUND_COLS = ['Monto devuelto', 'MONTO DEVUELTO', 'Dinero devuelto', 'DINERO DEVUELTO', 'Reembolso', 'REEMBOLSO', 'Devolución', 'DEVOLUCIÓN', 'Refund', 'REFUND'];
+function readRefund(row) {
+  for (const c of REFUND_COLS) if (row[c] !== undefined && row[c] !== '') return parsePrice(row[c]);
+  return 0;
+}
+function hasRefundColumn(rows) {
+  return rows.length > 0 && REFUND_COLS.some(c => Object.prototype.hasOwnProperty.call(rows[0], c));
 }
 
 function groupByOrder(rows, priceCol, priceCol2) {
@@ -58,9 +68,20 @@ function groupByOrder(rows, priceCol, priceCol2) {
         size:       row['Size of box'] || '',
         precio_web: precioWeb,
         precio_pag: precioPag,
+        devuelto:   readRefund(row),
         productos:  [],
         boxes:      parseFloat(row['boxes'] || '1') || 1,
       };
+    }
+    // Línea adicional de la misma orden con su propio precio (otra colección/caja)
+    if (current && !(num && num.toString().startsWith('#'))) {
+      const extraWeb = parsePrice(row['precio web'] || row['PRECIO WEB'] || 0);
+      const extraPag = parsePrice(row['precio pagado'] || row['PRECIO REAL PAGADO'] || 0);
+      if (extraWeb || extraPag) {
+        current.precio_web += extraWeb;
+        current.precio_pag += extraPag || extraWeb;
+      }
+      current.devuelto += readRefund(row);
     }
     if (current && (row['Producto'] || row['Colección'])) {
       current.productos.push({
@@ -156,6 +177,7 @@ export default function LogisticsPage({ onBack }) {
   const [tab,       setTab]       = useState('activas'); // activas | historial | recurrentes
   const [search,    setSearch]    = useState('');
   const [selected,  setSelected]  = useState(null);
+  const [refundCol, setRefundCol] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -164,6 +186,7 @@ export default function LogisticsPage({ onBack }) {
         fetchSheet('RESUMEN'),
         fetchSheet('HISTORIAL'),
       ]);
+      setRefundCol(hasRefundColumn(r) || hasRefundColumn(h));
       setResumen(groupByOrder(r,   'precio web',        'PRECIO REAL PAGADO'));
       setHistorial(groupByOrder(h, 'PRECIO WEB',        'PRECIO REAL PAGADO'));
       setLastSync(new Date());
@@ -203,6 +226,24 @@ export default function LogisticsPage({ onBack }) {
   const todosClientes = Object.values(clientMap).sort((a,b) => b.orders.length - a.orders.length);
   const recurrentes   = todosClientes.filter(c => c.orders.length > 1);
   const totalClientes = todosClientes.length;
+
+  // ── Métricas generales (historial + activas, sin duplicar números de orden) ──
+  const ordMap = new Map();
+  [...historial, ...resumen].forEach(o => { if (!ordMap.has(o.num)) ordMap.set(o.num, o); });
+  const ordenesUnicas  = [...ordMap.values()];
+  const ventasTotales  = ordenesUnicas.reduce((s, o) => s + (o.precio_pag || 0), 0);
+  const totalDevuelto  = ordenesUnicas.reduce((s, o) => s + (o.devuelto || 0), 0);
+  const ordenesConDev  = ordenesUnicas.filter(o => (o.devuelto || 0) > 0).length;
+  const totalDescuento = ordenesUnicas.reduce((s, o) => s + Math.max((o.precio_web || 0) - (o.precio_pag || 0), 0), 0);
+  const ordenesConDesc = ordenesUnicas.filter(o => (o.precio_web || 0) > (o.precio_pag || 0)).length;
+  const cliCount = {};
+  ordenesUnicas.forEach(o => {
+    const key = (o.email || o.cliente || '').trim().toLowerCase();
+    if (key) cliCount[key] = (cliCount[key] || 0) + 1;
+  });
+  const clientesTotales = Object.keys(cliCount).length;
+  const clientes2mas    = Object.values(cliCount).filter(n => n >= 2).length;
+  const clientes1       = Object.values(cliCount).filter(n => n === 1).length;
 
   // Colecciones más vendidas
   const colCount = {};
@@ -264,6 +305,50 @@ export default function LogisticsPage({ onBack }) {
             <div style={S.cardLabel}>Clientes únicos</div>
             <div style={{ ...S.cardVal, color: '#6B21A8' }}>{totalClientes}</div>
             <div style={S.cardSub}>{historial.length} órdenes · {recurrentes.length} recurrentes</div>
+          </div>
+        </div>
+
+        {/* MÉTRICAS GENERALES */}
+        <div style={S.grid4}>
+          <div style={S.card}>
+            <div style={S.cardLabel}>Ventas totales</div>
+            <div style={{ ...S.cardVal, color: '#3B6D11' }}>{fmtMoney(ventasTotales)}</div>
+            <div style={S.cardSub}>Precio pagado · historial + activas</div>
+          </div>
+          <div style={S.card}>
+            <div style={S.cardLabel}>Órdenes totales</div>
+            <div style={{ ...S.cardVal, color: '#185FA5' }}>{ordenesUnicas.length}</div>
+            <div style={S.cardSub}>{historial.length} historial · {resumen.length} activas</div>
+          </div>
+          <div style={S.card}>
+            <div style={S.cardLabel}>Dinero devuelto</div>
+            <div style={{ ...S.cardVal, color: '#993C1D' }}>{fmtMoney(totalDevuelto)}</div>
+            <div style={S.cardSub}>{refundCol ? 'Columna "Monto devuelto"' : 'Agrega la columna "Monto devuelto" en la hoja'}</div>
+          </div>
+          <div style={S.card}>
+            <div style={S.cardLabel}>Órdenes con devolución</div>
+            <div style={{ ...S.cardVal, color: '#993C1D' }}>{ordenesConDev}</div>
+            <div style={S.cardSub}>{ordenesUnicas.length ? Math.round(ordenesConDev / ordenesUnicas.length * 100) : 0}% de las órdenes</div>
+          </div>
+          <div style={S.card}>
+            <div style={S.cardLabel}>Descuentos totales</div>
+            <div style={{ ...S.cardVal, color: '#854F0B' }}>{fmtMoney(totalDescuento)}</div>
+            <div style={S.cardSub}>Precio web − pagado · {ordenesConDesc} órdenes</div>
+          </div>
+          <div style={S.card}>
+            <div style={S.cardLabel}>Clientes totales</div>
+            <div style={{ ...S.cardVal, color: '#6B21A8' }}>{clientesTotales}</div>
+            <div style={S.cardSub}>Por email · historial + activas</div>
+          </div>
+          <div style={S.card}>
+            <div style={S.cardLabel}>Clientes con 2+ órdenes</div>
+            <div style={{ ...S.cardVal, color: '#1A7A3C' }}>{clientes2mas}</div>
+            <div style={S.cardSub}>{clientesTotales ? Math.round(clientes2mas / clientesTotales * 100) : 0}% recompra</div>
+          </div>
+          <div style={S.card}>
+            <div style={S.cardLabel}>Clientes con 1 orden</div>
+            <div style={{ ...S.cardVal, color: '#5F5E5A' }}>{clientes1}</div>
+            <div style={S.cardSub}>{clientesTotales ? Math.round(clientes1 / clientesTotales * 100) : 0}% de los clientes</div>
           </div>
         </div>
 
