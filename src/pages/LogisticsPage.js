@@ -259,6 +259,9 @@ export default function LogisticsPage({ onBack }) {
     if (key) cliCount[key] = (cliCount[key] || 0) + 1;
   });
   const clientesTotales = Object.keys(cliCount).length;
+  // Shopify (permiso read_orders) solo permite ver órdenes de los últimos 60 días
+  const desde60 = (() => { const d = new Date(); d.setDate(d.getDate() - 60);
+    return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }); })();
   const clientes2mas    = Object.values(cliCount).filter(n => n >= 2).length;
   const clientes1       = Object.values(cliCount).filter(n => n === 1).length;
 
@@ -340,12 +343,12 @@ export default function LogisticsPage({ onBack }) {
           <div style={S.card}>
             <div style={S.cardLabel}>Dinero devuelto</div>
             <div style={{ ...S.cardVal, color: '#993C1D' }}>{fmtMoney(totalDevuelto)}</div>
-            <div style={S.cardSub}>{shopifyOk ? 'Reembolsos de Shopify' : refundCol ? 'Columna "Monto devuelto"' : 'Sin conexión a Shopify'}</div>
+            <div style={S.cardSub}>{shopifyOk ? `Shopify · solo últimos 60 días (desde ${desde60})` : refundCol ? 'Columna "Monto devuelto"' : 'Sin conexión a Shopify'}</div>
           </div>
           <div style={S.card}>
             <div style={S.cardLabel}>Órdenes con devolución</div>
             <div style={{ ...S.cardVal, color: '#993C1D' }}>{ordenesConDev}</div>
-            <div style={S.cardSub}>{ordenesUnicas.length ? Math.round(ordenesConDev / ordenesUnicas.length * 100) : 0}% de las órdenes</div>
+            <div style={S.cardSub}>{shopifyOk ? `Solo últimos 60 días (desde ${desde60})` : `${ordenesUnicas.length ? Math.round(ordenesConDev / ordenesUnicas.length * 100) : 0}% de las órdenes`}</div>
           </div>
           <div style={S.card}>
             <div style={S.cardLabel}>Descuentos totales</div>
