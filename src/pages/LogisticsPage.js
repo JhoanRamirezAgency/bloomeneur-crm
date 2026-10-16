@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { supabase } from '../lib/supabase';
 
 const SHEET_ID = process.env.REACT_APP_LOGISTICS_SHEET_ID || '1Z6hxb_Z9TPDbAA8l9B25WJlCCRIpfwGuJtkD41puYA8';
 const API_KEY  = process.env.REACT_APP_GOOGLE_API_KEY;
@@ -178,6 +179,8 @@ export default function LogisticsPage({ onBack }) {
   const [search,    setSearch]    = useState('');
   const [selected,  setSelected]  = useState(null);
   const [refundCol, setRefundCol] = useState(false);
+  const [shopifyRefunds, setShopifyRefunds] = useState({}); // { '#1280': 159.99 }
+  const [shopifyOk, setShopifyOk] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -187,6 +190,17 @@ export default function LogisticsPage({ onBack }) {
         fetchSheet('HISTORIAL'),
       ]);
       setRefundCol(hasRefundColumn(r) || hasRefundColumn(h));
+      // Reembolsos desde Shopify (sincronizados en Supabase cada hora)
+      try {
+        await supabase.rpc('sync_shopify_refunds');
+        const { data: refs, error: refErr } = await supabase.from('shopify_refunds').select('order_name, refunded_amount');
+        if (!refErr && refs) {
+          const map = {};
+          refs.forEach(x => { map[String(x.order_name).trim()] = Number(x.refunded_amount) || 0; });
+          setShopifyRefunds(map);
+          setShopifyOk(true);
+        }
+      } catch (e) { console.error('Shopify refunds:', e); }
       setResumen(groupByOrder(r,   'precio web',        'PRECIO REAL PAGADO'));
       setHistorial(groupByOrder(h, 'PRECIO WEB',        'PRECIO REAL PAGADO'));
       setLastSync(new Date());
@@ -230,7 +244,10 @@ export default function LogisticsPage({ onBack }) {
   // ── Métricas generales (historial + activas, sin duplicar números de orden) ──
   const ordMap = new Map();
   [...historial, ...resumen].forEach(o => { if (!ordMap.has(o.num)) ordMap.set(o.num, o); });
-  const ordenesUnicas  = [...ordMap.values()];
+  const ordenesUnicas  = [...ordMap.values()].map(o => ({
+    ...o,
+    devuelto: Math.max(o.devuelto || 0, shopifyRefunds[String(o.num).trim()] || 0),
+  }));
   const ventasTotales  = ordenesUnicas.reduce((s, o) => s + (o.precio_pag || 0), 0);
   const totalDevuelto  = ordenesUnicas.reduce((s, o) => s + (o.devuelto || 0), 0);
   const ordenesConDev  = ordenesUnicas.filter(o => (o.devuelto || 0) > 0).length;
@@ -323,7 +340,7 @@ export default function LogisticsPage({ onBack }) {
           <div style={S.card}>
             <div style={S.cardLabel}>Dinero devuelto</div>
             <div style={{ ...S.cardVal, color: '#993C1D' }}>{fmtMoney(totalDevuelto)}</div>
-            <div style={S.cardSub}>{refundCol ? 'Columna "Monto devuelto"' : 'Agrega la columna "Monto devuelto" en la hoja'}</div>
+            <div style={S.cardSub}>{shopifyOk ? 'Reembolsos de Shopify' : refundCol ? 'Columna "Monto devuelto"' : 'Sin conexión a Shopify'}</div>
           </div>
           <div style={S.card}>
             <div style={S.cardLabel}>Órdenes con devolución</div>
