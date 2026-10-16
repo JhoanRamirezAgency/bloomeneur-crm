@@ -25,6 +25,22 @@ const PROFILE_COLORS = {
   'Bloomeneur':     { bg: '#E6F4EA', color: '#166534', icon: '🌿' },
 };
 
+// Solo se muestran los leads que ingresaron en los últimos 4 meses
+const MONTHS_VISIBLE = 4;
+function cutoffDate() {
+  const d = new Date();
+  d.setMonth(d.getMonth() - MONTHS_VISIBLE);
+  return d;
+}
+function toInputDate(d) {
+  const z = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
+}
+function formatIngreso(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 const YEARS_LABEL = {
   '0':    '0 años',
   '1-2':  '1-2 años',
@@ -213,6 +229,9 @@ export default function Dashboard() {
   const [csFilter, setCSFilter]         = useState('');
   const [profileFilter, setProfileFilter] = useState('');
   const [pendingFilter, setPendingFilter] = useState(false);
+  const [dateFrom, setDateFrom]         = useState('');
+  const [dateTo, setDateTo]             = useState('');
+  const [touchFilter, setTouchFilter]   = useState(''); // '' | 'con' | 'sin'
   const [lastSync, setLastSync]         = useState(null);
   const [showNewLead, setShowNewLead]   = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -234,6 +253,7 @@ export default function Dashboard() {
       let query = supabase
         .from('leads')
         .select('*')
+        .gte('created_at', cutoffDate().toISOString())
         .order('created_at', { ascending: false })
         .range(page * pageSize, (page + 1) * pageSize - 1);
       if (!isAdmin) query = query.eq('assigned_to', user.email);
@@ -267,7 +287,7 @@ export default function Dashboard() {
       if (result.inserted > 0) loadLeads();
     };
     doSync();
-    const interval = setInterval(doSync, 60 * 60 * 1000);
+    const interval = setInterval(doSync, 10 * 60 * 1000);
     return () => clearInterval(interval);
   }, [isAdmin, loadLeads]);
 
@@ -295,7 +315,12 @@ export default function Dashboard() {
     const matchC = !csFilter      || l.assigned_to === csFilter;
     const matchP = !profileFilter || l.client_profile === profileFilter;
     const matchPending = !pendingFilter || l.has_pending;
-    return matchQ && matchS && matchC && matchP && matchPending;
+    const created = l.created_at ? new Date(l.created_at) : null;
+    const matchFrom = !dateFrom || (created && created >= new Date(dateFrom + 'T00:00:00'));
+    const matchTo   = !dateTo   || (created && created <= new Date(dateTo + 'T23:59:59'));
+    const nTouches  = (l.touches || []).length;
+    const matchTouch = !touchFilter || (touchFilter === 'con' ? nTouches > 0 : nTouches === 0);
+    return matchQ && matchS && matchC && matchP && matchPending && matchFrom && matchTo && matchTouch;
   });
 
   // ── Métricas ──────────────────────────────────────────────────────────────
@@ -305,6 +330,15 @@ export default function Dashboard() {
     customer: leads.filter(l => l.status === 'Customer').length,
     pending:  leads.filter(l => l.has_pending).length,
   };
+
+  const setQuickRange = (days) => {
+    if (!days) { setDateFrom(''); setDateTo(''); return; }
+    const from = new Date(); from.setDate(from.getDate() - (days - 1));
+    setDateFrom(toInputDate(from)); setDateTo(toInputDate(new Date()));
+  };
+  const hasDateOrTouchFilter = dateFrom || dateTo || touchFilter;
+  const minDate = toInputDate(cutoffDate());
+  const maxDate = toInputDate(new Date());
 
   const uniqueCS = [...new Set(leads.map(l => l.assigned_to).filter(Boolean))];
 
@@ -401,11 +435,37 @@ export default function Dashboard() {
             <span style={S.count}>{filtered.length} leads</span>
           </div>
 
+          {/* ── FILTROS: FECHA DE INGRESO Y TOQUES ── */}
+          <div style={S.filters}>
+            <span style={S.filterLabel}>Fecha de ingreso</span>
+            <input type="date" style={S.sel} value={dateFrom} min={minDate} max={maxDate}
+              onChange={e => setDateFrom(e.target.value)} title="Desde" />
+            <span style={S.filterLabel}>a</span>
+            <input type="date" style={S.sel} value={dateTo} min={minDate} max={maxDate}
+              onChange={e => setDateTo(e.target.value)} title="Hasta" />
+            {[{ l: 'Hoy', d: 1 }, { l: '7 días', d: 7 }, { l: '30 días', d: 30 }].map(q => (
+              <button key={q.l} style={{ ...S.sel, cursor: 'pointer' }} onClick={() => setQuickRange(q.d)}>{q.l}</button>
+            ))}
+            <select style={S.sel} value={touchFilter} onChange={e => setTouchFilter(e.target.value)}>
+              <option value="">Con y sin toque</option>
+              <option value="con">✓ Con toque</option>
+              <option value="sin">○ Sin toque</option>
+            </select>
+            {hasDateOrTouchFilter && (
+              <button style={{ ...S.sel, cursor: 'pointer', color: '#A32D2D' }}
+                onClick={() => { setDateFrom(''); setDateTo(''); setTouchFilter(''); }}>
+                ✕ Limpiar
+              </button>
+            )}
+            <span style={S.count}>Mostrando leads de los últimos {MONTHS_VISIBLE} meses</span>
+          </div>
+
           {/* ── TABLA ── */}
           <div style={S.table}>
             <div style={S.thead}>
               <div style={{ width: 40 }} />
               <div style={{ flex: 2 }}>Lead</div>
+              <div style={{ width: 90 }}>Ingreso</div>
               <div style={{ flex: 1.5 }}>Contacto</div>
               <div style={{ flex: 1 }}>Estado</div>
               <div style={{ flex: 1.5 }}>Perfil</div>
@@ -443,6 +503,9 @@ export default function Dashboard() {
                     <div style={S.name}>{lead.full_name}</div>
                     <div style={S.sub}>{lead.email}</div>
                   </div>
+
+                  {/* Fecha de ingreso */}
+                  <div style={{ width: 90, fontSize: 11, color: '#5F5E5A' }}>{formatIngreso(lead.created_at)}</div>
 
                   {/* Teléfono */}
                   <div style={{ flex: 1.5, fontSize: 12, color: '#5F5E5A' }}>{lead.phone}</div>
@@ -567,6 +630,7 @@ const S = {
   filters:     { display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' },
   search:      { flex: 1, minWidth: 200, padding: '8px 12px', border: '0.5px solid #ccc', borderRadius: 8, fontSize: 13, outline: 'none', background: 'white' },
   sel:         { padding: '8px 10px', border: '0.5px solid #ccc', borderRadius: 8, fontSize: 12, background: 'white' },
+  filterLabel: { fontSize: 12, color: '#888780' },
   count:       { fontSize: 12, color: '#888780', marginLeft: 'auto' },
   table:       { background: 'white', borderRadius: 12, border: '0.5px solid #e0ddd6', overflow: 'hidden' },
   thead:       { display: 'flex', alignItems: 'center', padding: '10px 16px', borderBottom: '0.5px solid #e0ddd6', background: '#f9f8f5', gap: 12, fontSize: 11, fontWeight: 600, color: '#888780', textTransform: 'uppercase', letterSpacing: '0.04em' },
