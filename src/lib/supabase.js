@@ -6,11 +6,10 @@ export const supabase = createClient(
 );
 
 // ─── DISTRIBUCIÓN DE CS ──────────────────────────────────────────────────────
-// Jessica: 40% | Marcela: 40% | Sofia: 20%
+// Marcela: 70% | Sofia: 30%  (Jessica ya no recibe leads nuevos; su histórico se conserva)
 export const CS_USERS = [
-  { email: 'jessica@bloomeneur.com', name: 'Jessica', weight: 40 },
-  { email: 'marcela@bloomeneur.com', name: 'Marcela', weight: 40 },
-  { email: 'sofia@bloomeneur.com',   name: 'Sofia',   weight: 20 },
+  { email: 'marcela@bloomeneur.com', name: 'Marcela', weight: 70 },
+  { email: 'sofia@bloomeneur.com',   name: 'Sofia',   weight: 30 },
 ];
 
 // Weighted round-robin: dado cuántos leads tiene cada CS, elige el siguiente

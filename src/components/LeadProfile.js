@@ -26,7 +26,6 @@ const YEARS_OPTIONS = [
 ];
 
 const CS_USERS = [
-  'jessica@bloomeneur.com',
   'marcela@bloomeneur.com',
   'sofia@bloomeneur.com',
 ];
