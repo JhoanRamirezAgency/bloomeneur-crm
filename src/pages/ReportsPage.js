@@ -19,7 +19,9 @@ function DonutChart({ segments, size = 120, thickness = 22 }) {
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
-      {segments.map((seg, i) => {
+      {/* track (va primero para quedar detrás de los segmentos) */}
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#f0ede6" strokeWidth={thickness} />
+      {segments.filter(seg => seg.value > 0).map((seg, i) => {
         const pct  = seg.value / total;
         const dash = pct * circ;
         const gap  = circ - dash;
@@ -32,16 +34,26 @@ function DonutChart({ segments, size = 120, thickness = 22 }) {
             strokeWidth={thickness}
             strokeDasharray={`${dash} ${gap}`}
             strokeDashoffset={-offset}
-            strokeLinecap="round"
+            strokeLinecap="butt"
           />
         );
         offset += dash;
         return el;
       })}
-      {/* track */}
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#f0ede6" strokeWidth={thickness} style={{ zIndex: -1 }}/>
     </svg>
   );
+}
+
+// ── Clasifica el resultado de una llamada (los CS lo escriben de muchas formas) ──
+function classifyCall(result) {
+  const r = String(result || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (!r.trim()) return 'Otro';
+  const noAnswer = /no ?cont|no answer|not available|rejected|no me deja|numero no existe/.test(r);
+  const leftVm   = /voicemail|\bvm\b|buzon|deje|dejo/.test(r) && !/vm full|vm not set|no me deja/.test(r);
+  if (leftVm) return 'Voicemail';
+  if (noAnswer) return 'No answer';
+  if (/answered|contest|colgo|no interes/.test(r)) return 'Answered';
+  return 'Otro';
 }
 
 // ── Horizontal bar ──────────────────────────────────────────────────────────
@@ -53,6 +65,8 @@ function Bar({ value, max, color }) {
     </div>
   );
 }
+
+function contactadosCount(leads) { return leads.filter(l => (l.touches || []).length > 0).length; }
 
 export default function ReportsPage({ onBack }) {
   const { user } = useAuth();
@@ -122,7 +136,7 @@ export default function ReportsPage({ onBack }) {
   const byCS      = {};
   const touchCounts   = { 0: 0, 1: 0, 2: 0, 3: 0, '4+': 0 };
   const contactTypes  = { call: 0, sms: 0, mail: 0 };
-  const callResults   = { Answered: 0, 'No answer': 0, Voicemail: 0 };
+  const callResults   = { Answered: 0, 'No answer': 0, Voicemail: 0, Otro: 0 };
   const byIntent  = {};
   const csActivity = {};
 
@@ -145,8 +159,8 @@ export default function ReportsPage({ onBack }) {
 
     (lead.touches || []).forEach(touch => {
       if (touch.type) contactTypes[touch.type] = (contactTypes[touch.type] || 0) + 1;
-      if (touch.type === 'call' && touch.result)
-        callResults[touch.result] = (callResults[touch.result] || 0) + 1;
+      if (touch.type === 'call')
+        callResults[classifyCall(touch.result)]++;
       // Si touch.cs está vacío, usar lead.assigned_to como respaldo
       const touchCs   = touch.cs || lead.assigned_to || '';
       const tcsName   = CS_NAMES[touchCs] || touchCs.split('@')[0] || 'Sin asignar';
@@ -166,6 +180,10 @@ export default function ReportsPage({ onBack }) {
 
   const totalTouches  = Object.values(contactTypes).reduce((a, b) => a + b, 0);
   const totalCalls    = callResults.Answered + callResults['No answer'] + callResults.Voicemail;
+  const llamadasTotal = contactTypes.call || 0;
+  const leadsLlamados = leads.filter(l => (l.touches || []).some(t => t.type === 'call')).length;
+  const toquesContactados = leads.reduce((s, l) => s + (l.touches || []).length, 0);
+  const promToques = contactadosCount(leads) ? (toquesContactados / contactadosCount(leads)).toFixed(1) : '0';
   const answeredRate  = totalCalls > 0 ? Math.round(callResults.Answered / totalCalls * 100) : 0;
   // Leads contactados: tienen al menos 1 toque
   const contactados   = leads.filter(l => (l.touches || []).length > 0).length;
@@ -225,16 +243,19 @@ export default function ReportsPage({ onBack }) {
           ))}
         </div>
         {/* ── MÉTRICAS SECUNDARIAS: IA y tasa de respuesta ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
           {[
             { label: '🤖 Contactados por IA',  val: contactadosIA,  color: '#6C47FF', pct: Math.round(contactadosIA / (leads.length || 1) * 100) + '%' },
             { label: '📞 Tasa de contestación', val: answeredRate + '%', color: '#1D9E75', pct: null },
             { label: '🔥 Hot leads activos',    val: byStatus['Hot'] || 0, color: '#D85A30', pct: Math.round((byStatus['Hot'] || 0) / (leads.length || 1) * 100) + '%' },
+            { label: '☎️ Leads llamados',       val: leadsLlamados, color: '#185FA5', pct: Math.round(leadsLlamados / (leads.length || 1) * 100) + '%', sub: `${llamadasTotal} llamadas en total` },
+            { label: '🔁 Toques promedio por lead contactado', val: promToques, color: '#1a1a18', pct: null, sub: `${toquesContactados} toques en ${contactados} leads` },
           ].map(m => (
             <div style={S.metricCard} key={m.label}>
               <div style={S.metricLabel}>{m.label}</div>
               <div style={{ ...S.metricVal, color: m.color }}>{m.val}</div>
               {m.pct && <div style={S.metricPct}>{m.pct} del total</div>}
+              {m.sub && <div style={S.metricPct}>{m.sub}</div>}
             </div>
           ))}
         </div>
@@ -316,12 +337,12 @@ export default function ReportsPage({ onBack }) {
                   <span style={{ fontSize: 22, fontWeight: 700, color: '#1D9E75' }}>{answeredRate}%</span>
                 </div>
               </div>
-              <div style={{ fontSize: 11, color: '#888780', marginTop: 4 }}>tasa de contestación</div>
+              <div style={{ fontSize: 11, color: '#888780', marginTop: 4 }}>tasa de contestación · {totalCalls} de {llamadasTotal} llamadas clasificadas</div>
             </div>
             {[
               { label: '✅ Contestó',       val: callResults.Answered,       color: '#1D9E75' },
               { label: '❌ No contestó',    val: callResults['No answer'],   color: '#D85A30' },
-              { label: '📱 Voicemail',      val: callResults.Voicemail,      color: '#BA7517' },
+              { label: '📱 Dejó voicemail', val: callResults.Voicemail,      color: '#BA7517' },
             ].map(r => (
               <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '0.5px solid #f0ede6', fontSize: 12 }}>
                 <span style={{ color: r.color }}>{r.label}</span>
