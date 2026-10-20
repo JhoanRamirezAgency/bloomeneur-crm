@@ -208,6 +208,32 @@ export default function ReportsPage({ onBack }) {
     .filter(l => l.status === 'Hot' && (l.touches || []).length > 0)
     .sort((a, b) => lastTouch(b).localeCompare(lastTouch(a)));
 
+  // Seguimiento histórico por mes de ingreso del lead
+  const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const byMonth = {};
+  leads.forEach(l => {
+    const key = (l.created_at || '').slice(0, 7) || 'Sin fecha';
+    if (!byMonth[key]) byMonth[key] = { leads: 0, tocados: 0, llamados: 0, llamadas: 0, contestaron: 0, sinToque: 0 };
+    const m = byMonth[key];
+    const ts = l.touches || [];
+    const calls = ts.filter(t => t.type === 'call');
+    m.leads++;
+    if (ts.length > 0) m.tocados++; else m.sinToque++;
+    if (calls.length > 0) m.llamados++;
+    m.llamadas += calls.length;
+    if (calls.some(t => classifyCall(t.result) === 'Answered')) m.contestaron++;
+  });
+  const monthRows = Object.entries(byMonth).sort((a, b) => a[0].localeCompare(b[0]));
+  const monthTotal = monthRows.reduce((t, [, m]) => {
+    Object.keys(m).forEach(k => { t[k] = (t[k] || 0) + m[k]; });
+    return t;
+  }, {});
+  const monthLabel = k => {
+    const [y, mm] = k.split('-');
+    return mm ? `${MESES[Number(mm) - 1]} ${y}` : k;
+  };
+  const pctOf = (a, b) => (b ? Math.round(a / b * 100) : 0) + '%';
+
   const statusColors = {
     New: '#378ADD', Hot: '#D85A30', Maybe: '#BA7517', Customer: '#1D9E75', Lost: '#888780',
   };
@@ -396,6 +422,44 @@ export default function ReportsPage({ onBack }) {
                 <div style={S.barCount}>{v}</div>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* ── SEGUIMIENTO POR MES DE INGRESO (HISTÓRICO) ── */}
+        <div style={S.card}>
+          <div style={S.cardTitle}>Seguimiento por mes de ingreso — histórico completo</div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={S.table}>
+              <thead>
+                <tr>
+                  {['Mes de ingreso', 'Leads', 'Tocados', '% Tocados', 'Llamados', 'Llamadas hechas', 'Contestaron', 'Sin ningún toque', '% Sin toque'].map(h => (
+                    <th key={h} style={S.th}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...monthRows, ['TOTAL', monthTotal]].map(([k, m]) => {
+                  const isTotal = k === 'TOTAL';
+                  const pctSin  = m.leads ? Math.round(m.sinToque / m.leads * 100) : 0;
+                  return (
+                    <tr key={k} style={{ ...S.tr, ...(isTotal ? { fontWeight: 700, background: '#f9f8f5' } : {}) }}>
+                      <td style={{ ...S.td, fontWeight: isTotal ? 700 : 500 }}>{isTotal ? 'Total' : monthLabel(k)}</td>
+                      <td style={S.td}>{m.leads}</td>
+                      <td style={S.td}>{m.tocados}</td>
+                      <td style={{ ...S.td, color: '#1D9E75' }}>{pctOf(m.tocados, m.leads)}</td>
+                      <td style={S.td}>{m.llamados}</td>
+                      <td style={S.td}>{m.llamadas}</td>
+                      <td style={S.td}>{m.contestaron}</td>
+                      <td style={{ ...S.td, color: '#D85A30', fontWeight: 600 }}>{m.sinToque}</td>
+                      <td style={{ ...S.td, color: pctSin >= 70 ? '#D85A30' : pctSin >= 40 ? '#BA7517' : '#1D9E75', fontWeight: 600 }}>{pctSin}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize: 11, color: '#888780', marginTop: 10 }}>
+            Incluye todos los leads del CRM, agrupados por la fecha en que entraron. "Contestaron" se detecta por el resultado escrito en cada llamada.
           </div>
         </div>
 
