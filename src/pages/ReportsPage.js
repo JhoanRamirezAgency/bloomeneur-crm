@@ -188,6 +188,13 @@ export default function ReportsPage({ onBack }) {
   // Leads contactados: tienen al menos 1 toque
   const contactados   = leads.filter(l => (l.touches || []).length > 0).length;
   const noContactados = leads.filter(l => (l.touches || []).length === 0).length;
+  // Conversación iniciada = al menos una llamada contestada
+  const fueLlamado   = l => (l.touches || []).some(t => t.type === 'call');
+  const contesto     = l => (l.touches || []).some(t => t.type === 'call' && classifyCall(t.result) === 'Answered');
+  const conConversacion      = leads.filter(contesto).length;
+  const sinConversacion      = leads.filter(l => !contesto(l));
+  const llamadosSinRespuesta = sinConversacion.filter(fueLlamado).length;
+  const nuncaLlamados        = sinConversacion.filter(l => !fueLlamado(l)).length;
   // Contactados por IA: toques donde cs contiene 'dapta', 'ia', 'ai', 'bot' o es un email de sistema
   const contactadosIA = leads.filter(l =>
     (l.touches || []).some(t => {
@@ -195,6 +202,11 @@ export default function ReportsPage({ onBack }) {
       return cs.includes('dapta') || cs.includes('bot') || cs.includes('ia@') || cs.includes('ai@') || t.type === 'ai';
     })
   ).length;
+
+  const lastTouch = l => (l.touches || []).reduce((m, t) => (t.date && t.date > m ? t.date : m), '');
+  const hotLeads = leads
+    .filter(l => l.status === 'Hot' && (l.touches || []).length > 0)
+    .sort((a, b) => lastTouch(b).localeCompare(lastTouch(a)));
 
   const statusColors = {
     New: '#378ADD', Hot: '#D85A30', Maybe: '#BA7517', Customer: '#1D9E75', Lost: '#888780',
@@ -231,14 +243,17 @@ export default function ReportsPage({ onBack }) {
         <div style={S.grid4}>
           {[
             { label: 'Total leads',          val: leads.length,               color: '#1a1a18', pct: null },
-            { label: 'Leads contactados',     val: contactados,                color: '#1D9E75', pct: Math.round(contactados / (leads.length || 1) * 100) + '%' },
-            { label: 'Sin contacto',          val: noContactados,              color: '#D85A30', pct: Math.round(noContactados / (leads.length || 1) * 100) + '%' },
+            { label: 'Con conversación',      val: conConversacion,            color: '#1D9E75', pct: Math.round(conConversacion / (leads.length || 1) * 100) + '%',
+              sub: [`Contestaron al menos una llamada`, `${contactados} leads con algún toque`] },
+            { label: 'Sin contacto',          val: sinConversacion.length,     color: '#D85A30', pct: Math.round(sinConversacion.length / (leads.length || 1) * 100) + '%',
+              sub: [`📞 ${llamadosSinRespuesta} llamados sin respuesta`, `🚫 ${nuncaLlamados} nunca llamados (${noContactados} sin ningún toque)`] },
             { label: 'Clientes convertidos',  val: byStatus['Customer'] || 0,  color: '#1D9E75', pct: Math.round((byStatus['Customer'] || 0) / (leads.length || 1) * 100) + '%' },
           ].map(m => (
             <div style={S.metricCard} key={m.label}>
               <div style={S.metricLabel}>{m.label}</div>
               <div style={{ ...S.metricVal, color: m.color }}>{m.val}</div>
               {m.pct && <div style={S.metricPct}>{m.pct} del total</div>}
+              {m.sub && m.sub.map(line => <div style={S.metricPct} key={line}>{line}</div>)}
             </div>
           ))}
         </div>
@@ -470,11 +485,9 @@ export default function ReportsPage({ onBack }) {
 
         {/* ── HOT LEADS ── */}
         <div style={S.card}>
-          <div style={S.cardTitle}>Hot leads — pendientes de cerrar</div>
+          <div style={S.cardTitle}>Hot leads — pendientes de cerrar ({hotLeads.length})</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
-            {leads
-              .filter(l => l.status === 'Hot' || (l.intent?.includes('want_to_get_started') && l.status === 'New'))
-              .slice(0, 12)
+            {hotLeads
               .map(lead => {
                 const touches  = (lead.touches || []).length;
                 const col = ['#1D9E75','#378ADD','#D4537E','#BA7517'][lead.full_name?.charCodeAt(0) % 4];
@@ -491,7 +504,7 @@ export default function ReportsPage({ onBack }) {
                 );
               })}
           </div>
-          {leads.filter(l => l.status === 'Hot').length === 0 && (
+          {hotLeads.length === 0 && (
             <div style={{ fontSize: 13, color: '#888780', padding: '12px 0' }}>No hay leads con estado Hot aún.</div>
           )}
         </div>
