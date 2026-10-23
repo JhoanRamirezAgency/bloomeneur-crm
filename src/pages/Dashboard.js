@@ -36,6 +36,16 @@ function toInputDate(d) {
   const z = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
 }
+// Fecha del primer toque registrado (YYYY-MM-DD) o null si nunca se contactó
+function firstContact(lead) {
+  const ds = (lead.touches || []).map(t => (t.date || '').slice(0, 10)).filter(Boolean).sort();
+  return ds[0] || null;
+}
+function formatYMD(ymd) {
+  if (!ymd) return '—';
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+}
 function formatIngreso(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -231,6 +241,8 @@ export default function Dashboard() {
   const [dateFrom, setDateFrom]         = useState('');
   const [dateTo, setDateTo]             = useState('');
   const [touchFilter, setTouchFilter]   = useState(''); // '' | 'con' | 'sin'
+  const [fcFrom, setFcFrom]             = useState(''); // primer contacto desde
+  const [fcTo, setFcTo]                 = useState(''); // primer contacto hasta
   const [lastSync, setLastSync]         = useState(null);
   const [showNewLead, setShowNewLead]   = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -319,7 +331,10 @@ export default function Dashboard() {
     const matchTo   = !dateTo   || (created && created <= new Date(dateTo + 'T23:59:59'));
     const nTouches  = (l.touches || []).length;
     const matchTouch = !touchFilter || (touchFilter === 'con' ? nTouches > 0 : nTouches === 0);
-    return matchQ && matchS && matchC && matchP && matchPending && matchFrom && matchTo && matchTouch;
+    const fc = firstContact(l);
+    const matchFcFrom = !fcFrom || (fc && fc >= fcFrom);
+    const matchFcTo   = !fcTo   || (fc && fc <= fcTo);
+    return matchQ && matchS && matchC && matchP && matchPending && matchFrom && matchTo && matchTouch && matchFcFrom && matchFcTo;
   });
 
   // ── Métricas ──────────────────────────────────────────────────────────────
@@ -336,6 +351,10 @@ export default function Dashboard() {
     setDateFrom(toInputDate(from)); setDateTo(toInputDate(new Date()));
   };
   const hasDateOrTouchFilter = dateFrom || dateTo || touchFilter;
+  const setFcQuick = (days) => {
+    const from = new Date(); from.setDate(from.getDate() - (days - 1));
+    setFcFrom(toInputDate(from)); setFcTo(toInputDate(new Date()));
+  };
   const minDate = toInputDate(cutoffDate());
   const maxDate = toInputDate(new Date());
 
@@ -459,12 +478,32 @@ export default function Dashboard() {
             <span style={S.count}>Mostrando leads de los últimos {MONTHS_VISIBLE} meses</span>
           </div>
 
+          {/* ── FILTRO: PRIMER CONTACTO ── */}
+          <div style={S.filters}>
+            <span style={S.filterLabel}>Primer contacto</span>
+            <input type="date" style={S.sel} value={fcFrom} max={maxDate}
+              onChange={e => setFcFrom(e.target.value)} title="Desde" />
+            <span style={S.filterLabel}>a</span>
+            <input type="date" style={S.sel} value={fcTo} max={maxDate}
+              onChange={e => setFcTo(e.target.value)} title="Hasta" />
+            {[{ l: 'Hoy', d: 1 }, { l: '7 días', d: 7 }, { l: '30 días', d: 30 }].map(q => (
+              <button key={'fc' + q.l} style={{ ...S.sel, cursor: 'pointer' }} onClick={() => setFcQuick(q.d)}>{q.l}</button>
+            ))}
+            {(fcFrom || fcTo) && (
+              <button style={{ ...S.sel, cursor: 'pointer', color: '#A32D2D' }}
+                onClick={() => { setFcFrom(''); setFcTo(''); }}>
+                ✕ Limpiar
+              </button>
+            )}
+          </div>
+
           {/* ── TABLA ── */}
           <div style={S.table}>
             <div style={S.thead}>
               <div style={{ width: 40 }} />
               <div style={{ flex: 2 }}>Lead</div>
               <div style={{ width: 90 }}>Ingreso</div>
+              <div style={{ width: 90 }}>1er contacto</div>
               <div style={{ flex: 1.5 }}>Contacto</div>
               <div style={{ flex: 1 }}>Estado</div>
               <div style={{ flex: 1.5 }}>Perfil</div>
@@ -505,6 +544,9 @@ export default function Dashboard() {
 
                   {/* Fecha de ingreso */}
                   <div style={{ width: 90, fontSize: 11, color: '#5F5E5A' }}>{formatIngreso(lead.created_at)}</div>
+
+                  {/* Primer contacto */}
+                  <div style={{ width: 90, fontSize: 11, color: firstContact(lead) ? '#1D9E75' : '#ccc' }}>{formatYMD(firstContact(lead))}</div>
 
                   {/* Teléfono */}
                   <div style={{ flex: 1.5, fontSize: 12, color: '#5F5E5A' }}>{lead.phone}</div>
