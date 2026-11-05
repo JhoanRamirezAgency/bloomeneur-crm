@@ -25,8 +25,10 @@ const PROFILE_COLORS = {
   'Bloomeneur':     { bg: '#E6F4EA', color: '#166534', icon: '🌿' },
 };
 
-// Solo se muestran los leads que ingresaron en los últimos 4 meses
+// Se muestran los leads que ingresaron en los últimos 4 meses, MÁS todos los
+// clientes que ya compraron (Customer) y los Hot, sin importar cuándo ingresaron.
 const MONTHS_VISIBLE = 4;
+const ALWAYS_VISIBLE_STATUSES = ['Customer', 'Hot'];
 function cutoffDate() {
   const d = new Date();
   d.setMonth(d.getMonth() - MONTHS_VISIBLE);
@@ -257,23 +259,36 @@ export default function Dashboard() {
   // ── Cargar leads ──────────────────────────────────────────────────────────
   const loadLeads = useCallback(async () => {
     setLoading(true);
-    let allLeads = [];
-    let page = 0;
     const pageSize = 1000;
-    while (true) {
-      let query = supabase
-        .from('leads')
-        .select('*')
-        .gte('created_at', cutoffDate().toISOString())
-        .order('created_at', { ascending: false })
-        .range(page * pageSize, (page + 1) * pageSize - 1);
-      if (!isAdmin) query = query.eq('assigned_to', user.email);
-      const { data, error } = await query;
-      if (error || !data || data.length === 0) break;
-      allLeads = allLeads.concat(data);
-      if (data.length < pageSize) break;
-      page++;
+    // Trae todas las páginas de una consulta
+    async function fetchAll(buildQuery) {
+      let rows = [];
+      let page = 0;
+      while (true) {
+        let query = buildQuery()
+          .order('created_at', { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+        if (!isAdmin) query = query.eq('assigned_to', user.email);
+        const { data, error } = await query;
+        if (error) { console.error('Error cargando leads:', error); break; }
+        if (!data || data.length === 0) break;
+        rows = rows.concat(data);
+        if (data.length < pageSize) break;
+        page++;
+      }
+      return rows;
     }
+    // 1) Leads recientes (últimos 4 meses)
+    const recent = await fetchAll(() =>
+      supabase.from('leads').select('*').gte('created_at', cutoffDate().toISOString()));
+    // 2) Clientes que compraron y Hot: siempre visibles, aunque sean antiguos
+    const always = await fetchAll(() =>
+      supabase.from('leads').select('*').in('status', ALWAYS_VISIBLE_STATUSES)
+        .lt('created_at', cutoffDate().toISOString()));
+    const byId = new Map();
+    [...recent, ...always].forEach(l => byId.set(l.id, l));
+    const allLeads = [...byId.values()].sort((a, b) =>
+      new Date(b.created_at || 0) - new Date(a.created_at || 0));
     setLeads(allLeads);
     setLoading(false);
   }, [user, isAdmin]);
@@ -355,7 +370,7 @@ export default function Dashboard() {
     const from = new Date(); from.setDate(from.getDate() - (days - 1));
     setFcFrom(toInputDate(from)); setFcTo(toInputDate(new Date()));
   };
-  const minDate = toInputDate(cutoffDate());
+  const minDate = '';
   const maxDate = toInputDate(new Date());
 
   const uniqueCS = [...new Set(leads.map(l => l.assigned_to).filter(Boolean))];
@@ -475,7 +490,7 @@ export default function Dashboard() {
                 ✕ Limpiar
               </button>
             )}
-            <span style={S.count}>Mostrando leads de los últimos {MONTHS_VISIBLE} meses</span>
+            <span style={S.count}>Mostrando leads de los últimos {MONTHS_VISIBLE} meses + todos los Customer y Hot</span>
           </div>
 
           {/* ── FILTRO: ÚLTIMO CONTACTO ── */}

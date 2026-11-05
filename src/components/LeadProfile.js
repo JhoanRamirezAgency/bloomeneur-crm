@@ -200,8 +200,11 @@ export default function LeadProfile({ lead, isAdmin, userEmail, onClose, onUpdat
 
   const canEdit = true;
 
+  const [saveError, setSaveError] = useState('');
+
   async function saveField(fields) {
     setSaving(true);
+    setSaveError('');
     const { data, error } = await supabase
       .from('leads')
       .update(fields)
@@ -209,7 +212,12 @@ export default function LeadProfile({ lead, isAdmin, userEmail, onClose, onUpdat
       .select()
       .single();
     if (!error && data) onUpdate(data);
+    if (error) {
+      console.error('Error guardando el lead:', error);
+      setSaveError('No se pudo guardar: ' + (error.message || 'error desconocido') + '. Intenta de nuevo.');
+    }
     setSaving(false);
+    return !error;
   }
 
   // ── Contact info field save ──
@@ -255,19 +263,27 @@ export default function LeadProfile({ lead, isAdmin, userEmail, onClose, onUpdat
   }
 
   async function addTouch() {
-    if (!touchResult.trim()) return;
+    // El resultado ya no es obligatorio: si viene vacío se usa la nota o el tipo,
+    // así el botón nunca "no hace nada" (antes se ignoraba el clic en silencio).
+    const TYPE_LABELS = { call: 'Llamada', sms: 'SMS/WhatsApp', mail: 'Email', note: 'Nota' };
+    const result = touchResult.trim() || touchNote.trim() || TYPE_LABELS[touchType] || 'Contacto';
     // Siempre guardar cs: userEmail tiene prioridad,
     // si no está, usar assigned_to del lead para que los reportes cuadren
     const csEmail = userEmail || lead.assigned_to || '';
     const touch = {
       type:   touchType,
-      result: touchResult.trim(),
+      result,
       note:   touchNote.trim(),
-      date:   touchDate,
+      date:   touchDate || new Date().toISOString().slice(0,10),
       cs:     csEmail,
     };
-    const newTouches = [...(lead.touches || []), touch];
-    await saveField({ touches: newTouches });
+    // Leer los toques actuales de la base de datos para no pisar toques
+    // que otra persona haya registrado mientras el perfil estaba abierto.
+    const { data: fresh } = await supabase.from('leads').select('touches').eq('id', lead.id).single();
+    const current = Array.isArray(fresh?.touches) ? fresh.touches
+                  : Array.isArray(lead.touches) ? lead.touches : [];
+    const ok = await saveField({ touches: [...current, touch] });
+    if (!ok) return;
     setTouchResult(''); setTouchNote('');
     setTouchDate(new Date().toISOString().slice(0,10));
     setShowTouch(false);
@@ -486,6 +502,11 @@ export default function LeadProfile({ lead, isAdmin, userEmail, onClose, onUpdat
                 </button>
               )}
             </div>
+            {saveError && (
+              <div style={{ fontSize: 12, color: '#A32D2D', background: '#FCEBEB', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
+                {saveError}
+              </div>
+            )}
 
             {showTouchForm && canEdit && (
               <div style={{ background: '#f9f8f5', borderRadius: 8, padding: 12, marginBottom: 12, border: '0.5px solid #e0ddd6' }}>
@@ -513,8 +534,8 @@ export default function LeadProfile({ lead, isAdmin, userEmail, onClose, onUpdat
                   <textarea style={{ ...inp, minHeight: 50, resize: 'vertical' }} placeholder="Detalles..." value={touchNote} onChange={e => setTouchNote(e.target.value)} />
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={addTouch} style={{ flex: 1, padding: '7px', borderRadius: 8, border: 'none', background: '#1D9E75', color: 'white', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
-                    Guardar contacto
+                  <button onClick={addTouch} disabled={saving} style={{ flex: 1, padding: '7px', borderRadius: 8, border: 'none', background: '#1D9E75', color: 'white', fontSize: 12, cursor: saving ? 'wait' : 'pointer', fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
+                    {saving ? 'Guardando…' : 'Guardar contacto'}
                   </button>
                   <button onClick={() => setShowTouch(false)} style={{ padding: '7px 12px', borderRadius: 8, border: '0.5px solid #ccc', background: 'white', fontSize: 12, cursor: 'pointer' }}>
                     Cancelar
